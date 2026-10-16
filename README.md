@@ -1,90 +1,81 @@
-# NetMirror Multi-Audio Downloader
+# Ultra Downloader - Multi-Audio Edition
 
 [![Release](https://img.shields.io/github/v/release/Xmon4u/NetMirror-MultiAudio-Downloader?color=38bdf8&style=flat-square)](https://github.com/Xmon4u/NetMirror-MultiAudio-Downloader/releases)
 [![Platform](https://img.shields.io/badge/Platform-Windows-0284c7?style=flat-square&logo=windows)](https://github.com/Xmon4u/NetMirror-MultiAudio-Downloader)
 [![Python](https://img.shields.io/badge/Python-3.10%2B-blue?style=flat-square&logo=python)](https://python.org)
+[![Developer](https://img.shields.io/badge/Developer-XMON4U-f43f5e?style=flat-square)](https://github.com/Xmon4u)
 [![License](https://img.shields.io/badge/License-MIT-green?style=flat-square)](LICENSE)
 
-A lightweight, portable Windows desktop utility built to rip and download full 1080p videos alongside **all multi-language audio tracks** (English, Hindi, Spanish, German, Japanese, etc.) from NetMirror mirrors (`net52.cc`, `net77.cc`, `freecdn1.top`).
+**Ultra Downloader** is a high-speed, portable Windows utility built to download full **1080p Full HD video** streams along with **all multi-language audio tracks** (English, Hindi, Spanish, German, Japanese, French, Korean, etc.) from modern media streaming servers.
 
-The app automatically combines all extracted audio channels with the high-resolution video into a clean `.mkv` container using FFmpeg, ready for VLC or MPC-HC with switchable audio tracks.
+It automatically extracts, downloads, and multiplexes all audio channels into a clean `.mkv` container using FFmpeg, ready for instant playback in VLC or MPC-HC with switchable audio tracks.
 
 ---
 
 ## ✨ Features
 
-- **Multi-Track Audio Muxing**: Grabs every audio language available on the master playlist (up to 15+ tracks) and muxes them into a single MKV file.
-- **Zero Configuration Required**: On first launch, the app automatically checks for `N_m3u8DL-RE` and `FFmpeg`. If not present on your system, it automatically downloads and configures them in the background.
-- **Modern Dark UI**: Clean, responsive desktop interface built with CustomTkinter. Includes real-time progress bars, speed monitors, and live terminal logging.
-- **Multi-Threaded Ripping**: Spawns up to 16 concurrent segment download workers for maximum network throughput.
-- **cURL & M3U8 Auto-Detection**: Accepts raw cURL commands copied straight from browser DevTools, parsing all necessary headers, referers, and temporary session tokens automatically.
+- **Multi-Track Audio Multiplexing**: Captures every audio track available in the master stream (up to 30+ language streams) and packages them together.
+- **Zero Configuration / Auto-Bootstrapper**: Automatically checks for `N_m3u8DL-RE` and `FFmpeg`. If missing on any target machine, it automatically fetches and installs them in the background.
+- **Modern Dark UI**: Windows 11 style dark interface powered by CustomTkinter, featuring real-time speed monitoring, progress tracking, and non-blocking terminal logs.
+- **Auto-Conflict & Duplicate Resolution**: Automatically handles file name collisions so subsequent downloads in the same folder never freeze or fail.
+- **cURL Command & M3U8 Auto-Detection**: Paste direct cURL commands copied from browser Developer Tools (F12) to bypass session tokens and referer checks.
+- **16 Multi-Threaded Workers**: Parallel chunk retrieval for maximum download speeds.
 
 ---
 
 ## 📥 Download & Quick Start
 
 1. Go to the [**Releases**](https://github.com/Xmon4u/NetMirror-MultiAudio-Downloader/releases) page.
-2. Download **`NetMirror_MultiAudio_Downloader.exe`**.
-3. Double-click to run (no installation needed).
+2. Download **`Ultra_Downloader_MultiAudio.exe`**.
+3. Double-click to launch (standalone, no installation required).
 
 ---
 
 ## 📖 How to Use
 
 ### Step 1: Copy Stream Link from Browser
-1. In your browser (Chrome / Edge / Brave), navigate to **net52.cc** or **net77.cc** and play the movie/episode.
-2. Press `F12` to open **Developer Tools** and switch to the **Network** tab.
-3. In the filter box, type `m3u8`.
-4. Right-click the master playlist request (e.g., `70307658.m3u8` or `1080p.m3u8`):
-   - Choose **Copy** ➔ **Copy as cURL (cmd)** *(or "Copy link address")*.
+1. In your browser (Chrome / Edge / Brave), navigate to your streaming page and hit play.
+2. Press **`F12`** to open **Developer Tools** and switch to the **Network** tab.
+3. In the filter box, type **`m3u8`**.
+4. Right-click the master playlist request (e.g. `*.m3u8` or `1080p.m3u8`):
+   - Select **Copy** ➔ **Copy as cURL (cmd)** *(or "Copy link address")*.
 
 ### Step 2: Download
-1. Open **NetMirror Multi-Audio Downloader**.
+1. Launch **Ultra Downloader**.
 2. Click **📋 Paste Clipboard**.
-3. Select your desired resolution (`1080p`, `720p`, `480p`) and audio preference (`All Audio Tracks` or specific languages).
+3. (Optional) Provide a custom movie title, target resolution, and audio preference.
 4. Click **🚀 START MULTI-AUDIO DOWNLOAD**.
 
-Once finished, click **📁 Open Folder** to find your `.mkv` file ready to play!
+When completed, click **📁 Open Folder** to play your multi-audio `.mkv` file!
 
 ---
 
-## 🛠️ Running from Source
+## 🛠️ Building from Source
 
-If you prefer running the Python script directly instead of using the pre-compiled `.exe`:
-
-### Prerequisites
-- Python 3.10 or higher
-- Git
-
-### Installation
 ```bash
 # Clone the repository
 git clone https://github.com/Xmon4u/NetMirror-MultiAudio-Downloader.git
 cd NetMirror-MultiAudio-Downloader
 
-# Install Python requirements
+# Install dependencies
 pip install customtkinter pillow pyinstaller
-```
 
-### Run the App
-```bash
+# Run GUI
 python main_gui.py
-```
 
-### Build Executable
-```bash
+# Build single-file EXE with icon
 python build_exe.py
 ```
-The compiled single-file binary will be placed in the `dist/` directory.
+
+---
+
+## 👨‍💻 Developer & Credits
+
+- **Developer:** [XMON4U](https://github.com/Xmon4u)
+- **GitHub:** [github.com/Xmon4u](https://github.com/Xmon4u)
 
 ---
 
 ## ⚖️ License
 
 Distributed under the [MIT License](LICENSE).
-
----
-
-## ⚠️ Disclaimer
-
-This tool is created for educational and personal archival purposes only. Users are solely responsible for ensuring compliance with all local laws and terms of service of any third-party websites accessed.
