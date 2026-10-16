@@ -1,0 +1,24 @@
+# PyInstaller & Virtual Environments
+build/
+dist/
+*.spec
+bin/
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
+
+# Media & Temporary files
+*.mkv
+*.mp4
+*.ts
+*.m3u8
+.netmirror_*
+.cache/
+
+# OS Specific
+Thumbs.db
+desktop.ini
+.DS_Store
