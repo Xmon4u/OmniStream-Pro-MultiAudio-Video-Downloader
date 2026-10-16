@@ -1,6 +1,6 @@
 """
-Ultra Downloader - Multi-Audio Edition
-Core High-Performance Engine with Non-Blocking Streaming & Conflict Resolution
+NetMi.Video Downloader - Core Download Engine
+High-performance multi-audio stream downloader using N_m3u8DL-RE and FFmpeg.
 """
 
 import os
@@ -13,7 +13,10 @@ from typing import Dict, Any, Optional, Callable
 
 from setup_dependencies import ensure_dependencies
 
-DEFAULT_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/155.0.0.0 Safari/537.36"
+DEFAULT_UA = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+    "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+)
 DEFAULT_SAVE_DIR = os.path.join(os.environ.get("USERPROFILE", "C:\\"), "Desktop")
 
 class DownloadEngine:
@@ -41,12 +44,24 @@ class DownloadEngine:
         headers = {}
 
         if "curl" in text.lower():
-            cleaned = text.replace('^"', '"').replace('^&', '&').replace('^^', '^').replace('^', '')
-            url_match = re.search(r'(?:--url|-u)?\s*["\']?(https?://[^\s"\']+)["\']?', cleaned, re.IGNORECASE)
+            # Unescape Windows cmd-style ^ quoting
+            cleaned = (
+                text
+                .replace('^"', '"')
+                .replace('^&', '&')
+                .replace('^^', '^')
+                .replace('^ ', ' ')
+            )
+            cleaned = re.sub(r'\^(?=[^\n])', '', cleaned)
+
+            url_match = re.search(
+                r'(?:--url|-u)?\s*["\']?(https?://[^\s"\'\\]+)["\']?',
+                cleaned, re.IGNORECASE
+            )
             if url_match:
                 url = url_match.group(1).rstrip('"\'')
-                
-            header_matches = re.findall(r'-H\s*["\']([^"\']+)["\']', cleaned, re.IGNORECASE)
+
+            header_matches = re.findall(r'-H\s+["\']([^"\']+)["\']', cleaned, re.IGNORECASE)
             for h in header_matches:
                 if ":" in h:
                     k, v = h.split(":", 1)
@@ -78,21 +93,26 @@ class DownloadEngine:
         local_path = os.path.join(temp_dir, f"master_{int(time.time())}.m3u8")
 
         curl_cmd = [
-            "curl.exe", "-s", url,
+            "curl.exe", "-s", "-L", url,
             "-H", f"Referer: {info['referer']}",
             "-H", f"Origin: {info['origin']}",
             "-H", f"User-Agent: {info['user_agent']}",
-            "-o", local_path
+            "--max-time", "25",
+            "-o", local_path,
         ]
 
-        res = subprocess.run(curl_cmd, capture_output=True, text=True, timeout=20)
+        res = subprocess.run(curl_cmd, capture_output=True, text=True, timeout=30)
         if res.returncode != 0 or not os.path.exists(local_path) or os.path.getsize(local_path) == 0:
-            raise RuntimeError(f"Failed to fetch master playlist from source: {url}")
+            raise RuntimeError(f"Could not fetch playlist: {url}")
 
         with open(local_path, "r", encoding="utf-8", errors="ignore") as f:
-            content = f.read(500)
-            if "Only Valid Users Allowed" in content or "403 Forbidden" in content or "<html" in content.lower():
-                raise RuntimeError("Access denied or session token expired. Please copy a fresh cURL request from DevTools.")
+            content = f.read(600)
+
+        if any(x in content for x in ["Only Valid Users", "403 Forbidden", "Access Denied"]) or \
+           "<html" in content.lower():
+            raise RuntimeError(
+                "Session expired or access denied. Please paste a fresh cURL command."
+            )
 
         return local_path
 
@@ -115,25 +135,29 @@ class DownloadEngine:
             else:
                 print(msg, flush=True)
 
-        log("=" * 65)
-        log("🚀 ULTRA DOWNLOADER - MULTI-AUDIO ENGINE")
-        log("=" * 65)
+        sep = "-" * 60
+        log(sep)
+        log("  NetMi.Video Downloader - Multi-Audio Engine")
+        log(sep)
 
-        # 1. Dependency Verification
-        log("[1/4] Verifying required binaries (N_m3u8DL-RE & FFmpeg)...")
+        # Step 1: Dependency check
+        log("[1/4] Verifying required binaries...")
         n_m3u8_path, ffmpeg_path = ensure_dependencies(
             status_callback=log,
-            progress_callback=progress_callback
+            progress_callback=progress_callback,
         )
 
-        # 2. Input Parsing
-        log("[2/4] Parsing stream URL and security headers...")
+        # Step 2: Parse input
+        log("[2/4] Parsing stream source...")
         info = self.parse_input(input_text)
         if not info["url"]:
-            raise ValueError("Invalid stream input. Please paste a cURL command or direct M3U8 link.")
+            raise ValueError(
+                "No valid stream URL detected. Paste a cURL command or direct M3U8 URL."
+            )
 
-        log(f"  • Source URL: {info['url'][:75]}...")
-        log(f"  • Referer:    {info['referer']}")
+        url_display = info['url'][:80] + ('...' if len(info['url']) > 80 else '')
+        log(f"  Source : {url_display}")
+        log(f"  Referer: {info['referer']}")
 
         # Auto-detect clean title or generate unique filename
         if not save_name:
@@ -155,49 +179,44 @@ class DownloadEngine:
             save_name = f"{base_name}_{counter}"
             counter += 1
 
-        log(f"  • Output Name: {save_name}.mkv")
-        log(f"  • Destination: {save_dir}")
+        log(f"  Output : {save_name}.mkv  ->  {save_dir}")
 
-        # 3. Master Playlist Fetching
-        log("[3/4] Fetching playlist metadata...")
-        temp_dir = os.path.join(save_dir, f".ultra_tmp_{os.getpid()}_{int(time.time())}")
+        # Step 3: Fetch playlist
+        log("[3/4] Fetching stream playlist...")
+        temp_dir = os.path.join(save_dir, f".netmi_tmp_{os.getpid()}_{int(time.time())}")
         try:
             target_source = self.fetch_master_playlist(info, temp_dir)
-            log(f"  • Cached master playlist successfully ({os.path.getsize(target_source)} bytes).")
-        except Exception as e:
-            log(f"  • Direct network streaming fallback ({e})")
+            log(f"  Playlist cached ({os.path.getsize(target_source):,} bytes).")
+        except Exception as exc:
+            log(f"  Warning: Playlist cache failed ({exc}). Using direct URL.")
             target_source = info["url"]
 
-        # Video Filter - selects highest quality without failing
-        if resolution == "1080p":
-            video_sel = "res=1920*|best:for=best"
-        elif resolution == "720p":
-            video_sel = "res=1280*|best:for=best"
-        elif resolution == "480p":
-            video_sel = "res=854*|best:for=best"
-        else:
-            video_sel = "for=best"
+        # Video stream selector — N_m3u8DL-RE syntax: res=HEIGHTp or best
+        res_map = {
+            "1080p": "res=1080p",
+            "720p":  "res=720p",
+            "480p":  "res=480p",
+            "best":  "best",
+        }
+        video_sel = res_map.get(resolution, "best")
 
-        # Audio Filter - 'all' selects every language track present
-        if audio_choice == "all":
-            audio_sel = "all"
-        elif audio_choice == "en_hi":
-            audio_sel = "lang=en|hin:for=all"
-        elif audio_choice == "eng":
-            audio_sel = "lang=en:for=best"
-        elif audio_choice == "hin":
-            audio_sel = "lang=hin:for=best"
-        else:
-            audio_sel = "all"
+        # Audio stream selector — 'all' downloads every language track available
+        audio_sel_map = {
+            "all":   "all",
+            "en_hi": "lang=eng,hin",
+            "eng":   "lang=eng",
+            "hin":   "lang=hin",
+        }
+        audio_sel = audio_sel_map.get(audio_choice, "all")
 
-        # Construct N_m3u8DL-RE Command with --auto-select and -mt (Concurrent Multi-Track)
+        # Build N_m3u8DL-RE command
         cmd = [
             n_m3u8_path,
             target_source,
-            "--auto-select",
+            "--auto-select",        # non-interactive: auto-pick if filter yields nothing
             "-sv", video_sel,
             "-sa", audio_sel,
-            "-mt",
+            "-mt",                  # concurrent multi-track downloads
             "--save-dir", save_dir,
             "--save-name", save_name,
             "-M", "format=mkv:muxer=ffmpeg",
@@ -208,11 +227,11 @@ class DownloadEngine:
             "-H", f"Referer: {info['referer']}",
             "-H", f"Origin: {info['origin']}",
             "-H", f"User-Agent: {info['user_agent']}",
-            "--no-ansi-color"
+            "--no-ansi-color",
         ]
 
-        log("[4/4] Starting multi-threaded download engine (16 parallel workers)...")
-        log("-" * 65)
+        log("[4/4] Starting download (16 parallel workers)...")
+        log(sep)
 
         self.current_process = subprocess.Popen(
             cmd,
@@ -227,29 +246,33 @@ class DownloadEngine:
         final_mkv = os.path.join(save_dir, f"{save_name}.mkv")
 
         last_progress_update = 0.0
-        for line in iter(self.current_process.stdout.readline, ''):
+        _keywords = (
+            "Vid ", "Aud ", "INFO", "WARN", "ERROR", "Exception",
+            "Mux", "Merging", "Done", "Fail", "success", "stream",
+        )
+
+        for line in iter(self.current_process.stdout.readline, ""):
             if self._is_aborted:
-                log("\n[ABORTED] Download cancelled by user.")
+                log("[Aborted] Download cancelled by user.")
                 break
 
             line = line.strip()
             if not line:
                 continue
 
-            # Parse progress percentage
-            pct_match = re.search(r'(\d+(?:\.\d+)?)%', line)
+            # Update progress bar
+            pct_match = re.search(r"(\d+(?:\.\d+)?)%", line)
             now = time.time()
-            if pct_match and progress_callback and (now - last_progress_update > 0.15):
+            if pct_match and progress_callback and (now - last_progress_update > 0.2):
                 try:
                     pct = float(pct_match.group(1))
-                    progress_callback(pct, line[:90])
+                    progress_callback(pct, line[:100])
                     last_progress_update = now
                 except Exception:
                     pass
 
-            # Log meaningful events and errors without flooding the UI queue
-            is_important = any(k in line for k in ["Vid", "Aud", "INFO", "WARN", "ERROR", "Exception", "Mux", "Merging", "Done"])
-            if is_important:
+            # Log only meaningful lines
+            if any(k in line for k in _keywords):
                 log(f"  {line}")
 
         self.current_process.stdout.close()
@@ -265,14 +288,22 @@ class DownloadEngine:
         if self._is_aborted:
             raise RuntimeError("Operation aborted by user.")
 
-        if self.current_process.returncode == 0 and os.path.exists(final_mkv):
-            log("=" * 65)
-            log(f"🎉 [SUCCESS] Download & Muxing Complete!")
-            log(f"📁 Output File: {final_mkv}")
-            log(f"📦 File Size:   {os.path.getsize(final_mkv) / (1024*1024):.2f} MB")
-            log("=" * 65)
+        rc = self.current_process.returncode
+
+        # Success: file exists and has content (some N_m3u8DL-RE builds exit non-zero on warnings)
+        if os.path.exists(final_mkv) and os.path.getsize(final_mkv) > 0:
+            size_mb = os.path.getsize(final_mkv) / (1024 * 1024)
+            log(sep)
+            log("  [SUCCESS] Download and mux complete!")
+            log(f"  Output : {final_mkv}")
+            log(f"  Size   : {size_mb:.2f} MB")
+            log(sep)
             if progress_callback:
-                progress_callback(100.0, "Download Finished Successfully!")
+                progress_callback(100.0, "Download complete!")
             return final_mkv
         else:
-            raise RuntimeError(f"Engine failed with return code {self.current_process.returncode}. Check output logs above for details.")
+            raise RuntimeError(
+                f"Download failed (exit code {rc}). "
+                "Check the terminal log above for details. "
+                "If the session expired, paste a fresh cURL command."
+            )
