@@ -1,4 +1,4 @@
-# OmniStream Pro
+# OmniStream Pro — Multi-Audio Video Downloader
 
 <div align="center">
 
@@ -7,8 +7,8 @@
 ### Universal Multi-Audio HLS/M3U8 Stream Downloader & Multiplexer
 **Enterprise-grade stream capture tool for Windows with concurrent multi-track audio preservation.**
 
-[![Release](https://img.shields.io/badge/Release-v1.0.0-6366f1?style=for-the-badge&logo=github)](https://github.com/Xmon4u/OmniStream-Pro/releases)
-[![Platform](https://img.shields.io/badge/Platform-Windows%2010%20%7C%2011-06b6d4?style=for-the-badge&logo=windows)](https://github.com/Xmon4u/OmniStream-Pro)
+[![Release](https://img.shields.io/badge/Release-v1.0.0-6366f1?style=for-the-badge&logo=github)](https://github.com/Xmon4u/OmniStream-Pro-MultiAudio-Video-Downloader/releases)
+[![Platform](https://img.shields.io/badge/Platform-Windows%2010%20%7C%2011-06b6d4?style=for-the-badge&logo=windows)](https://github.com/Xmon4u/OmniStream-Pro-MultiAudio-Video-Downloader)
 [![Python](https://img.shields.io/badge/Python-3.10%2B-10b981?style=for-the-badge&logo=python)](https://python.org)
 [![License](https://img.shields.io/badge/License-MIT-f59e0b?style=for-the-badge)](LICENSE)
 
@@ -52,7 +52,7 @@ Powered by [N_m3u8DL-RE](https://github.com/nilaoda/N_m3u8DL-RE) and [FFmpeg](ht
 
 ### Option A: Standalone Executable (Recommended)
 
-1. Head over to [**GitHub Releases**](https://github.com/Xmon4u/OmniStream-Pro/releases).
+1. Head over to [**GitHub Releases**](https://github.com/Xmon4u/OmniStream-Pro-MultiAudio-Video-Downloader/releases).
 2. Download `OmniStream_Pro.exe` from the latest **v1.0.0** release.
 3. Double-click to launch—ready out of the box!
 
@@ -60,8 +60,8 @@ Powered by [N_m3u8DL-RE](https://github.com/nilaoda/N_m3u8DL-RE) and [FFmpeg](ht
 
 ```bash
 # Clone the repository
-git clone https://github.com/Xmon4u/OmniStream-Pro.git
-cd OmniStream-Pro
+git clone https://github.com/Xmon4u/OmniStream-Pro-MultiAudio-Video-Downloader.git
+cd OmniStream-Pro-MultiAudio-Video-Downloader
 
 # Install Python requirements
 pip install customtkinter pillow

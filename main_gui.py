@@ -64,9 +64,9 @@ class OmniStreamApp(ctk.CTk):
 
     def __init__(self):
         super().__init__()
-        self.title("OmniStream Pro — Universal Multi-Audio Stream Downloader")
-        self.geometry("1000x860")
-        self.minsize(920, 760)
+        self.title("OmniStream Pro — Multi-Audio Video Downloader")
+        self.geometry("1020x860")
+        self.minsize(940, 760)
         self.configure(fg_color=BG_ROOT)
 
         icon_path = os.path.join(BASE_DIR, "app_icon.ico")
@@ -119,8 +119,8 @@ class OmniStreamApp(ctk.CTk):
         title_box.grid(row=0, column=1, sticky="sw", pady=(14, 0))
 
         ctk.CTkLabel(
-            title_box, text="OmniStream Pro",
-            font=ctk.CTkFont(family=FONT_MAIN, size=19, weight="bold"),
+            title_box, text="OmniStream Pro  •  Multi-Audio Video Downloader",
+            font=ctk.CTkFont(family=FONT_MAIN, size=18, weight="bold"),
             text_color=TEXT_TITLE
         ).pack(side="left")
 
