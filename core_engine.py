@@ -1,7 +1,8 @@
 """
-OmniStream Pro - High Performance Download & Muxing Engine
-Captures HLS/M3U8 video streams with concurrent multi-audio tracks and
-multiplexes them into single lossless MKV files using N_m3u8DL-RE and FFmpeg.
+OmniStream Pro v2.0.0 - High Performance Multi-Stream Engine
+Captures HLS (.m3u8), DASH (.mpd), and direct video/audio media streams.
+Concurrent multi-audio track preservation and lossless MKV multiplexing via N_m3u8DL-RE and FFmpeg.
+Author: XMON4U (https://github.com/Xmon4u)
 """
 
 import os
@@ -10,6 +11,7 @@ import sys
 import time
 import shutil
 import subprocess
+import urllib.request
 from typing import Dict, Any, Optional, Callable
 
 from setup_dependencies import ensure_dependencies
@@ -31,7 +33,7 @@ class OmniStreamEngine:
         if self.current_process and self.current_process.poll() is None:
             try:
                 self.current_process.terminate()
-                time.sleep(0.5)
+                time.sleep(0.4)
                 if self.current_process.poll() is None:
                     self.current_process.kill()
             except Exception:
@@ -40,7 +42,7 @@ class OmniStreamEngine:
     @staticmethod
     def parse_input(raw_text: str) -> Dict[str, Any]:
         """Extract stream URL, cookies, custom headers, referer, and origin from cURL or URL string."""
-        text = raw_text.strip()
+        text = str(raw_text).strip()
         url = ""
         headers: Dict[str, str] = {}
 
@@ -99,7 +101,7 @@ class OmniStreamEngine:
             raise ValueError("No valid URL found in input.")
 
         os.makedirs(temp_dir, exist_ok=True)
-        local_path = os.path.join(temp_dir, f"master_{int(time.time())}.m3u8")
+        local_path = os.path.join(temp_dir, f"master_{int(time.time()*1000)}.m3u8")
 
         curl_cmd = [
             "curl.exe", "-s", "-L", url,
@@ -123,10 +125,58 @@ class OmniStreamEngine:
         if any(x in content for x in ["Only Valid Users", "403 Forbidden", "Access Denied"]) or \
            "<html" in content.lower():
             raise RuntimeError(
-                "Session expired or access denied by remote host. Please copy and paste a fresh cURL command."
+                "Session expired or access denied by remote host. Please copy a fresh stream link or cURL command."
             )
 
         return local_path
+
+    def _download_direct_file(
+        self,
+        info: Dict[str, Any],
+        output_path: str,
+        log_callback: Optional[Callable[[str], None]] = None,
+        progress_callback: Optional[Callable[[float, str], None]] = None
+    ) -> str:
+        """High-speed streaming downloader for direct media files (MP4, MKV, WebM, MP3, etc.)."""
+        url = info["url"]
+        req = urllib.request.Request(url)
+        req.add_header("User-Agent", info.get("user_agent", DEFAULT_UA))
+        req.add_header("Referer", info.get("referer", ""))
+        req.add_header("Origin", info.get("origin", ""))
+        if "cookie" in info.get("headers", {}):
+            req.add_header("Cookie", info["headers"]["cookie"])
+
+        chunk_size = 128 * 1024
+        downloaded = 0
+        start_time = time.time()
+        last_progress_time = 0.0
+
+        with urllib.request.urlopen(req, timeout=30) as resp, open(output_path, "wb") as f:
+            total_size = int(resp.getheader("Content-Length") or 0)
+            while not self._is_aborted:
+                chunk = resp.read(chunk_size)
+                if not chunk:
+                    break
+                f.write(chunk)
+                downloaded += len(chunk)
+
+                now = time.time()
+                if progress_callback and (now - last_progress_time > 0.25):
+                    pct = (downloaded / total_size * 100.0) if total_size > 0 else 50.0
+                    elapsed = max(0.001, now - start_time)
+                    speed_mb = (downloaded / (1024 * 1024)) / elapsed
+                    cur_mb = downloaded / (1024 * 1024)
+                    tot_mb = total_size / (1024 * 1024) if total_size > 0 else 0
+                    msg = f"{cur_mb:.1f}MB/{tot_mb:.1f}MB • {speed_mb:.2f} MB/s ({pct:.0f}%)"
+                    progress_callback(pct, msg)
+                    last_progress_time = now
+
+        if self._is_aborted:
+            if os.path.exists(output_path):
+                os.remove(output_path)
+            raise RuntimeError("Download aborted by user.")
+
+        return output_path
 
     def run_download(
         self,
@@ -149,11 +199,11 @@ class OmniStreamEngine:
 
         sep = "━" * 60
         log(sep)
-        log("  OmniStream Pro  •  High-Speed Multi-Audio Engine")
+        log("  OmniStream Pro v2.0.0  •  High-Speed Multi-Audio Engine")
         log(sep)
 
         # Step 1: Verify binaries
-        log("[1/4] Checking required binaries (N_m3u8DL-RE & FFmpeg)...")
+        log("[1/4] Checking required streaming binaries (N_m3u8DL-RE & FFmpeg)...")
         n_m3u8_path, ffmpeg_path = ensure_dependencies(
             status_callback=log,
             progress_callback=progress_callback,
@@ -164,8 +214,14 @@ class OmniStreamEngine:
         info = self.parse_input(input_text)
         if not info["url"]:
             raise ValueError(
-                "No valid stream URL detected. Paste a cURL command or direct M3U8 URL."
+                "No valid stream URL detected. Paste a cURL command or direct stream URL."
             )
+
+        url_clean = info['url'].split('?')[0]
+        is_m3u8_or_mpd = (
+            re.search(r'\.(m3u8|mpd)($|\?)', info["url"], re.IGNORECASE) or
+            ("hls" in info["url"].lower() and "segment" not in info["url"].lower())
+        )
 
         url_display = info['url'][:80] + ('...' if len(info['url']) > 80 else '')
         log(f"  Source   : {url_display}")
@@ -184,17 +240,31 @@ class OmniStreamEngine:
         if not save_name:
             save_name = f"OmniStream_{int(time.time())}"
 
+        # Determine container extension
+        is_direct_mp4 = bool(re.search(r'\.(mp4|m4v)($|\?)', info["url"], re.IGNORECASE))
+        target_ext = ".mp4" if (is_direct_mp4 and not is_m3u8_or_mpd) else ".mkv"
+
         # Auto-resolve duplicate file conflict
         base_name = save_name
         counter = 1
-        while os.path.exists(os.path.join(save_dir, f"{save_name}.mkv")):
+        while os.path.exists(os.path.join(save_dir, f"{save_name}{target_ext}")):
             save_name = f"{base_name}_{counter}"
             counter += 1
 
-        log(f"  Target   : {save_name}.mkv")
+        target_file = os.path.join(save_dir, f"{save_name}{target_ext}")
+        log(f"  Target   : {os.path.basename(target_file)}")
         log(f"  Location : {save_dir}")
 
-        # Step 3: Fetch playlist
+        # If it's a direct non-playlist media file, use direct streaming downloader
+        if not is_m3u8_or_mpd and is_direct_mp4:
+            log("[3/4] Direct video stream detected — downloading media...")
+            out = self._download_direct_file(info, target_file, log_callback, progress_callback)
+            log(f"  [SUCCESS] Download completed: {out}")
+            if progress_callback:
+                progress_callback(100.0, "Download complete!")
+            return out
+
+        # Step 3: Fetch playlist (for HLS/DASH)
         log("[3/4] Fetching stream playlist...")
         temp_dir = os.path.join(save_dir, f".omnistream_tmp_{os.getpid()}_{int(time.time())}")
         try:
@@ -223,7 +293,7 @@ class OmniStreamEngine:
         }
         audio_sel = audio_sel_map.get(audio_choice, "all")
 
-        # Build command
+        # Build command for N_m3u8DL-RE
         cmd = [
             n_m3u8_path,
             target_source,
@@ -247,7 +317,7 @@ class OmniStreamEngine:
         if "cookie" in info["headers"]:
             cmd.extend(["-H", f"Cookie: {info['headers']['cookie']}"])
 
-        log("[4/4] Starting download with 16 parallel threads...")
+        log("[4/4] Starting concurrent download with 16 parallel threads...")
         log(sep)
 
         self.current_process = subprocess.Popen(
@@ -318,7 +388,7 @@ class OmniStreamEngine:
             raise RuntimeError(
                 f"Download failed (exit code {rc}). "
                 "Check the terminal log above for details. "
-                "If the session expired, copy and paste a fresh cURL command."
+                "If the session expired, copy and paste a fresh stream URL or cURL command."
             )
 
 # Backward-compatibility alias

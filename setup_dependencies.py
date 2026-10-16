@@ -1,7 +1,8 @@
 """
-OmniStream Pro - Dependency Manager
+OmniStream Pro v2.0.0 - Dependency Manager
 Automatically detects and installs required streaming and multiplexing binaries
 (N_m3u8DL-RE and FFmpeg) for high-speed multi-audio stream capture.
+Author: XMON4U (https://github.com/Xmon4u)
 """
 
 import os
@@ -44,12 +45,16 @@ def find_binary(binary_name: str) -> Optional[str]:
         p = os.path.join(sys._MEIPASS, binary_name)
         if os.path.exists(p):
             return p
+        p_bin = os.path.join(sys._MEIPASS, "bin", binary_name)
+        if os.path.exists(p_bin):
+            return p_bin
 
     # 2. Local application bin directory and user AppData
     base_dir = get_base_dir()
     candidates = [
         os.path.join(base_dir, binary_name),
         os.path.join(base_dir, "bin", binary_name),
+        os.path.join(os.path.dirname(base_dir), "bin", binary_name),
         os.path.join(os.environ.get("LOCALAPPDATA", ""), "OmniStreamPro", "bin", binary_name)
     ]
 
@@ -170,8 +175,6 @@ def ensure_dependencies(
             log(f"[Setup Error] Failed to download FFmpeg: {e}")
             raise RuntimeError(f"Could not auto-download FFmpeg: {e}")
 
-    log(f"[Engine Ready] N_m3u8DL-RE: {n_m3u8_path}")
-    log(f"[Engine Ready] FFmpeg: {ffmpeg_path}")
     return n_m3u8_path, ffmpeg_path
 
 if __name__ == "__main__":

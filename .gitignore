@@ -10,6 +10,9 @@ dist/
 
 # Local tool binaries (auto-downloaded by setup_dependencies.py)
 bin/
+release_output/
+*.exe
+*.zip
 
 # Playlist cache
 master_*/
