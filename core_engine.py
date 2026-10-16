@@ -168,17 +168,17 @@ class DownloadEngine:
             log(f"  • Direct network streaming fallback ({e})")
             target_source = info["url"]
 
-        # Video Filter
+        # Video Filter - selects highest quality without failing
         if resolution == "1080p":
-            video_sel = "res=1920*:for=best"
+            video_sel = "res=1920*|best:for=best"
         elif resolution == "720p":
-            video_sel = "res=1280*:for=best"
+            video_sel = "res=1280*|best:for=best"
         elif resolution == "480p":
-            video_sel = "res=854*:for=best"
+            video_sel = "res=854*|best:for=best"
         else:
-            video_sel = "best"
+            video_sel = "for=best"
 
-        # Audio Filter
+        # Audio Filter - 'all' selects every language track present
         if audio_choice == "all":
             audio_sel = "all"
         elif audio_choice == "en_hi":
@@ -190,13 +190,14 @@ class DownloadEngine:
         else:
             audio_sel = "all"
 
-        # Construct N_m3u8DL-RE Command with --auto-select (Mandatory for non-interactive execution)
+        # Construct N_m3u8DL-RE Command with --auto-select and -mt (Concurrent Multi-Track)
         cmd = [
             n_m3u8_path,
             target_source,
             "--auto-select",
             "-sv", video_sel,
             "-sa", audio_sel,
+            "-mt",
             "--save-dir", save_dir,
             "--save-name", save_name,
             "-M", "format=mkv:muxer=ffmpeg",
