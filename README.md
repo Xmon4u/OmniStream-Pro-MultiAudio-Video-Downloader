@@ -7,8 +7,8 @@
 ### Universal Multi-Audio HLS/M3U8 Stream Downloader & Multiplexer
 **Enterprise-grade stream capture tool for Windows with concurrent multi-track audio preservation.**
 
-[![Release](https://img.shields.io/badge/Release-v1.0.0-6366f1?style=for-the-badge&logo=github)](https://github.com/Xmon4u/NetMirror-MultiAudio-Downloader/releases)
-[![Platform](https://img.shields.io/badge/Platform-Windows%2010%20%7C%2011-06b6d4?style=for-the-badge&logo=windows)](https://github.com/Xmon4u/NetMirror-MultiAudio-Downloader)
+[![Release](https://img.shields.io/badge/Release-v1.0.0-6366f1?style=for-the-badge&logo=github)](https://github.com/Xmon4u/OmniStream-Pro/releases)
+[![Platform](https://img.shields.io/badge/Platform-Windows%2010%20%7C%2011-06b6d4?style=for-the-badge&logo=windows)](https://github.com/Xmon4u/OmniStream-Pro)
 [![Python](https://img.shields.io/badge/Python-3.10%2B-10b981?style=for-the-badge&logo=python)](https://python.org)
 [![License](https://img.shields.io/badge/License-MIT-f59e0b?style=for-the-badge)](LICENSE)
 
@@ -37,13 +37,14 @@ Powered by [N_m3u8DL-RE](https://github.com/nilaoda/N_m3u8DL-RE) and [FFmpeg](ht
 
 ---
 
-## 🌐 Supported Streams
+## 🌐 Supported Sites
 
-| Source Category | Compatibility |
-|-----------------|---------------|
-| CDN Streaming Nodes (net52.cc, net77.cc, freecdn1.top) | ✅ Verified & Tested |
-| Token-Protected Master Playlists | ✅ Supported via cURL Import |
-| Standard HLS / M3U8 Live & VOD Streams | ✅ Fully Compatible |
+| Site | Status |
+|------|--------|
+| `net52.cc` | ✅ Tested |
+| `net77.cc` | ✅ Tested |
+| `freecdn1.top` | ✅ Tested |
+| Any HLS/M3U8 stream | ✅ Should work |
 
 ---
 
@@ -51,7 +52,7 @@ Powered by [N_m3u8DL-RE](https://github.com/nilaoda/N_m3u8DL-RE) and [FFmpeg](ht
 
 ### Option A: Standalone Executable (Recommended)
 
-1. Head over to [**GitHub Releases**](https://github.com/Xmon4u/NetMirror-MultiAudio-Downloader/releases).
+1. Head over to [**GitHub Releases**](https://github.com/Xmon4u/OmniStream-Pro/releases).
 2. Download `OmniStream_Pro.exe` from the latest **v1.0.0** release.
 3. Double-click to launch—ready out of the box!
 
@@ -59,8 +60,8 @@ Powered by [N_m3u8DL-RE](https://github.com/nilaoda/N_m3u8DL-RE) and [FFmpeg](ht
 
 ```bash
 # Clone the repository
-git clone https://github.com/Xmon4u/NetMirror-MultiAudio-Downloader.git
-cd NetMirror-MultiAudio-Downloader
+git clone https://github.com/Xmon4u/OmniStream-Pro.git
+cd OmniStream-Pro
 
 # Install Python requirements
 pip install customtkinter pillow
@@ -101,15 +102,17 @@ The resulting executable will be placed in `dist/OmniStream_Pro.exe` and copied 
 
 ```
 OmniStream Pro/
-├── app_icon.ico          # Windows multi-resolution icon (16x16 to 256x256)
-├── app_icon.png          # High-resolution application artwork
-├── build_exe.py          # PyInstaller one-file compilation pipeline
-├── core_engine.py        # Stream parsing, download manager & FFmpeg muxer
-├── generate_icon.py      # High-definition icon rendering script
-├── main_gui.py           # CustomTkinter dark-mode desktop interface
-├── setup_dependencies.py # Automated portable binary downloader
-├── LICENSE               # MIT Open Source License
-└── README.md             # Documentation
+├── app_icon.ico             # Windows multi-resolution icon (16x16 to 256x256)
+├── app_icon.png             # High-resolution application artwork
+├── bridge_server.py         # Localhost browser extension bridge server
+├── build_exe.py             # PyInstaller one-file compilation pipeline
+├── core_engine.py           # Stream parsing, download manager & FFmpeg muxer
+├── generate_icon.py         # High-definition icon rendering script
+├── main_gui.py              # CustomTkinter dark-mode desktop interface
+├── setup_dependencies.py    # Automated portable binary downloader
+├── Start_OmniStream_Pro.bat # Quick launcher batch script
+├── LICENSE                  # MIT Open Source License
+└── README.md                # Documentation
 ```
 
 ---

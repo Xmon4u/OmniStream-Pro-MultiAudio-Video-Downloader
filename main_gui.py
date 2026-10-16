@@ -141,7 +141,7 @@ class OmniStreamApp(ctk.CTk):
         # Subtitle
         ctk.CTkLabel(
             hdr,
-            text="1080p  ·  Multi-Audio MKV  ·  Batch Queue & Extension Bridge  ·  High-Speed Muxer",
+            text="1080p  ·  Multi-Audio MKV  ·  net52.cc · net77.cc · freecdn1.top  |  Queue & Extension Bridge",
             font=ctk.CTkFont(family=FONT_MAIN, size=10),
             text_color=TEXT_BODY, anchor="w"
         ).grid(row=1, column=1, sticky="nw", pady=(2, 12))
