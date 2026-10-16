@@ -1,6 +1,7 @@
 """
-NetMi.Video Downloader - Core Download Engine
-High-performance multi-audio stream downloader using N_m3u8DL-RE and FFmpeg.
+OmniStream Pro - High Performance Download & Muxing Engine
+Captures HLS/M3U8 video streams with concurrent multi-audio tracks and
+multiplexes them into single lossless MKV files using N_m3u8DL-RE and FFmpeg.
 """
 
 import os
@@ -19,13 +20,13 @@ DEFAULT_UA = (
 )
 DEFAULT_SAVE_DIR = os.path.join(os.environ.get("USERPROFILE", "C:\\"), "Desktop")
 
-class DownloadEngine:
+class OmniStreamEngine:
     def __init__(self):
         self.current_process: Optional[subprocess.Popen] = None
         self._is_aborted = False
 
     def abort(self):
-        """Safely terminate any running download process."""
+        """Safely terminate any running download and multiplex process."""
         self._is_aborted = True
         if self.current_process and self.current_process.poll() is None:
             try:
@@ -38,13 +39,13 @@ class DownloadEngine:
 
     @staticmethod
     def parse_input(raw_text: str) -> Dict[str, Any]:
-        """Extract stream URL, custom headers, referer, and origin from cURL or URL string."""
+        """Extract stream URL, cookies, custom headers, referer, and origin from cURL or URL string."""
         text = raw_text.strip()
         url = ""
-        headers = {}
+        headers: Dict[str, str] = {}
 
         if "curl" in text.lower():
-            # Unescape Windows cmd-style ^ quoting
+            # Clean Windows cmd-style ^ quoting and escaped quotes
             cleaned = (
                 text
                 .replace('^"', '"')
@@ -54,6 +55,7 @@ class DownloadEngine:
             )
             cleaned = re.sub(r'\^(?=[^\n])', '', cleaned)
 
+            # Match URL
             url_match = re.search(
                 r'(?:--url|-u)?\s*["\']?(https?://[^\s"\'\\]+)["\']?',
                 cleaned, re.IGNORECASE
@@ -61,16 +63,23 @@ class DownloadEngine:
             if url_match:
                 url = url_match.group(1).rstrip('"\'')
 
+            # Match Headers
             header_matches = re.findall(r'-H\s+["\']([^"\']+)["\']', cleaned, re.IGNORECASE)
             for h in header_matches:
                 if ":" in h:
                     k, v = h.split(":", 1)
                     headers[k.strip().lower()] = v.strip()
+
+            # Match -b or --cookie
+            cookie_match = re.search(r'(?:-b|--cookie)\s+["\']([^"\']+)["\']', cleaned, re.IGNORECASE)
+            if cookie_match and "cookie" not in headers:
+                headers["cookie"] = cookie_match.group(1).strip()
         else:
             url_match = re.search(r'https?://[^\s"\']+', text)
             if url_match:
                 url = url_match.group(0).rstrip('"\'')
 
+        # Fallback defaults for popular stream CDNs if missing
         referer = headers.get("referer", "https://net52.cc/")
         user_agent = headers.get("user-agent", DEFAULT_UA)
         origin = headers.get("origin", "https://net52.cc")
@@ -84,7 +93,7 @@ class DownloadEngine:
         }
 
     def fetch_master_playlist(self, info: Dict[str, Any], temp_dir: str) -> str:
-        """Download master playlist to local cache to ensure non-expired parsing."""
+        """Download master playlist to local cache to verify access and guard against expiry."""
         url = info["url"]
         if not url:
             raise ValueError("No valid URL found in input.")
@@ -101,6 +110,9 @@ class DownloadEngine:
             "-o", local_path,
         ]
 
+        if "cookie" in info["headers"]:
+            curl_cmd.extend(["-H", f"Cookie: {info['headers']['cookie']}"])
+
         res = subprocess.run(curl_cmd, capture_output=True, text=True, timeout=30)
         if res.returncode != 0 or not os.path.exists(local_path) or os.path.getsize(local_path) == 0:
             raise RuntimeError(f"Could not fetch playlist: {url}")
@@ -111,7 +123,7 @@ class DownloadEngine:
         if any(x in content for x in ["Only Valid Users", "403 Forbidden", "Access Denied"]) or \
            "<html" in content.lower():
             raise RuntimeError(
-                "Session expired or access denied. Please paste a fresh cURL command."
+                "Session expired or access denied by remote host. Please copy and paste a fresh cURL command."
             )
 
         return local_path
@@ -126,7 +138,7 @@ class DownloadEngine:
         log_callback: Optional[Callable[[str], None]] = None,
         progress_callback: Optional[Callable[[float, str], None]] = None
     ) -> str:
-        """Execute resilient multi-audio download pipeline with auto-conflict resolution."""
+        """Execute high-speed concurrent multi-audio stream capture and MKV muxing."""
         self._is_aborted = False
 
         def log(msg: str):
@@ -135,20 +147,20 @@ class DownloadEngine:
             else:
                 print(msg, flush=True)
 
-        sep = "-" * 60
+        sep = "━" * 60
         log(sep)
-        log("  NetMi.Video Downloader - Multi-Audio Engine")
+        log("  OmniStream Pro  •  High-Speed Multi-Audio Engine")
         log(sep)
 
-        # Step 1: Dependency check
-        log("[1/4] Verifying required binaries...")
+        # Step 1: Verify binaries
+        log("[1/4] Checking required binaries (N_m3u8DL-RE & FFmpeg)...")
         n_m3u8_path, ffmpeg_path = ensure_dependencies(
             status_callback=log,
             progress_callback=progress_callback,
         )
 
-        # Step 2: Parse input
-        log("[2/4] Parsing stream source...")
+        # Step 2: Parse source
+        log("[2/4] Parsing stream metadata...")
         info = self.parse_input(input_text)
         if not info["url"]:
             raise ValueError(
@@ -156,51 +168,53 @@ class DownloadEngine:
             )
 
         url_display = info['url'][:80] + ('...' if len(info['url']) > 80 else '')
-        log(f"  Source : {url_display}")
-        log(f"  Referer: {info['referer']}")
+        log(f"  Source   : {url_display}")
+        log(f"  Referer  : {info['referer']}")
 
-        # Auto-detect clean title or generate unique filename
+        # Auto-detect title if empty
         if not save_name:
             id_match = re.search(r'(\d{6,10})', info["url"])
             if id_match:
-                save_name = f"Video_{id_match.group(1)}"
+                save_name = f"OmniStream_{id_match.group(1)}"
             else:
-                save_name = f"Video_{int(time.time())}"
+                save_name = f"OmniStream_{int(time.time())}"
 
-        # Sanitize save name
+        # Clean filename
         save_name = re.sub(r'[\\/*?:"<>|]', "", save_name).strip().replace(" ", "_")
         if not save_name:
-            save_name = f"Video_{int(time.time())}"
+            save_name = f"OmniStream_{int(time.time())}"
 
-        # Resolve duplicate filenames in the same destination folder
+        # Auto-resolve duplicate file conflict
         base_name = save_name
         counter = 1
         while os.path.exists(os.path.join(save_dir, f"{save_name}.mkv")):
             save_name = f"{base_name}_{counter}"
             counter += 1
 
-        log(f"  Output : {save_name}.mkv  ->  {save_dir}")
+        log(f"  Target   : {save_name}.mkv")
+        log(f"  Location : {save_dir}")
 
         # Step 3: Fetch playlist
         log("[3/4] Fetching stream playlist...")
-        temp_dir = os.path.join(save_dir, f".netmi_tmp_{os.getpid()}_{int(time.time())}")
+        temp_dir = os.path.join(save_dir, f".omnistream_tmp_{os.getpid()}_{int(time.time())}")
         try:
             target_source = self.fetch_master_playlist(info, temp_dir)
             log(f"  Playlist cached ({os.path.getsize(target_source):,} bytes).")
         except Exception as exc:
-            log(f"  Warning: Playlist cache failed ({exc}). Using direct URL.")
+            log(f"  Notice: Direct stream URL mode ({exc}).")
             target_source = info["url"]
 
-        # Video stream selector — N_m3u8DL-RE syntax: res=HEIGHTp or best
+        # Resolution mapping
         res_map = {
+            "best":  "best",
             "1080p": "res=1080p",
             "720p":  "res=720p",
             "480p":  "res=480p",
-            "best":  "best",
+            "audio_only": "none",
         }
-        video_sel = res_map.get(resolution, "best")
+        video_sel = res_map.get(resolution, "res=1080p")
 
-        # Audio stream selector — 'all' downloads every language track available
+        # Audio track mapping
         audio_sel_map = {
             "all":   "all",
             "en_hi": "lang=eng,hin",
@@ -209,11 +223,11 @@ class DownloadEngine:
         }
         audio_sel = audio_sel_map.get(audio_choice, "all")
 
-        # Build N_m3u8DL-RE command
+        # Build command
         cmd = [
             n_m3u8_path,
             target_source,
-            "--auto-select",        # non-interactive: auto-pick if filter yields nothing
+            "--auto-select",
             "-sv", video_sel,
             "-sa", audio_sel,
             "-mt",                  # concurrent multi-track downloads
@@ -230,7 +244,10 @@ class DownloadEngine:
             "--no-ansi-color",
         ]
 
-        log("[4/4] Starting download (16 parallel workers)...")
+        if "cookie" in info["headers"]:
+            cmd.extend(["-H", f"Cookie: {info['headers']['cookie']}"])
+
+        log("[4/4] Starting download with 16 parallel threads...")
         log(sep)
 
         self.current_process = subprocess.Popen(
@@ -244,7 +261,6 @@ class DownloadEngine:
         )
 
         final_mkv = os.path.join(save_dir, f"{save_name}.mkv")
-
         last_progress_update = 0.0
         _keywords = (
             "Vid ", "Aud ", "INFO", "WARN", "ERROR", "Exception",
@@ -260,7 +276,6 @@ class DownloadEngine:
             if not line:
                 continue
 
-            # Update progress bar
             pct_match = re.search(r"(\d+(?:\.\d+)?)%", line)
             now = time.time()
             if pct_match and progress_callback and (now - last_progress_update > 0.2):
@@ -271,7 +286,6 @@ class DownloadEngine:
                 except Exception:
                     pass
 
-            # Log only meaningful lines
             if any(k in line for k in _keywords):
                 log(f"  {line}")
 
@@ -290,20 +304,22 @@ class DownloadEngine:
 
         rc = self.current_process.returncode
 
-        # Success: file exists and has content (some N_m3u8DL-RE builds exit non-zero on warnings)
         if os.path.exists(final_mkv) and os.path.getsize(final_mkv) > 0:
             size_mb = os.path.getsize(final_mkv) / (1024 * 1024)
             log(sep)
-            log("  [SUCCESS] Download and mux complete!")
-            log(f"  Output : {final_mkv}")
-            log(f"  Size   : {size_mb:.2f} MB")
+            log("  [SUCCESS] All audio & video tracks downloaded & muxed!")
+            log(f"  File : {final_mkv}")
+            log(f"  Size : {size_mb:.2f} MB")
             log(sep)
             if progress_callback:
-                progress_callback(100.0, "Download complete!")
+                progress_callback(100.0, "Download and mux complete!")
             return final_mkv
         else:
             raise RuntimeError(
                 f"Download failed (exit code {rc}). "
                 "Check the terminal log above for details. "
-                "If the session expired, paste a fresh cURL command."
+                "If the session expired, copy and paste a fresh cURL command."
             )
+
+# Backward-compatibility alias
+DownloadEngine = OmniStreamEngine

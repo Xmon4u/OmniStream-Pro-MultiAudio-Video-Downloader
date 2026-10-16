@@ -1,10 +1,14 @@
-# NetMi.Video Downloader - v2.1.0
-# Professional multi-audio stream downloader with fixed UI layout.
-# Author: XMON4U (https://github.com/Xmon4u)
+"""
+OmniStream Pro - v1.0.0
+Universal Multi-Audio HLS/M3U8 Stream Downloader & Multiplexer
+Features: High-Speed Concurrent Multi-Audio MKV, Batch Queue, and Browser Extension Bridge.
+Author: XMON4U (https://github.com/Xmon4u)
+"""
 
 import os
 import sys
 import queue
+import time
 import threading
 import webbrowser
 from tkinter import filedialog, messagebox
@@ -14,51 +18,55 @@ import customtkinter as ctk
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, BASE_DIR)
 
-from core_engine import DownloadEngine, DEFAULT_SAVE_DIR
+from core_engine import OmniStreamEngine, DEFAULT_SAVE_DIR
 from setup_dependencies import ensure_dependencies
+from bridge_server import BridgeServer
 
+# CustomTkinter setup
 ctk.set_appearance_mode("Dark")
 ctk.set_default_color_theme("blue")
 
-# ── Color Palette ─────────────────────────────────────────────────────────────
-BG_ROOT      = "#0a0f1e"
-BG_HEADER    = "#0d1326"
-BG_CARD      = "#111827"
-BG_CARD2     = "#0f1929"
-BG_INPUT     = "#080d1a"
-BG_TERMINAL  = "#060b18"
-ACCENT_BLUE  = "#2563eb"
-ACCENT_CYAN  = "#06b6d4"
-ACCENT_GLOW  = "#38bdf8"
-BORDER       = "#1e2d4a"
-BORDER2      = "#16253d"
-TEXT_PRIMARY = "#f0f6ff"
-TEXT_SECOND  = "#8ba3c4"
-TEXT_MUTED   = "#4a6080"
-TEXT_GREEN   = "#22d3a5"
-TEXT_RED     = "#f87171"
-TEXT_YELLOW  = "#fbbf24"
-TEXT_LOG     = "#7ee8a2"
-FONT_MAIN    = "Segoe UI"
-FONT_MONO    = "Cascadia Code"
+# ── Color Palette & Design Tokens ─────────────────────────────────────────────
+BG_ROOT        = "#080c14"
+BG_HEADER      = "#0c1220"
+BG_CARD        = "#101827"
+BG_CARD2       = "#0f172a"
+BG_INPUT       = "#060911"
+BG_TERMINAL    = "#04070d"
+ACCENT_PRIMARY = "#6366f1"
+ACCENT_HOVER   = "#4f46e5"
+ACCENT_CYAN    = "#06b6d4"
+ACCENT_GLOW    = "#38bdf8"
+ACCENT_EMERALD = "#10b981"
+ACCENT_ROSE    = "#f43f5e"
+ACCENT_AMBER   = "#f59e0b"
+BORDER_MAIN    = "#1e293b"
+BORDER_SUB     = "#162032"
+TEXT_TITLE     = "#f8fafc"
+TEXT_BODY      = "#94a3b8"
+TEXT_MUTED     = "#64748b"
+TEXT_LOG       = "#38bdf8"
+FONT_MAIN      = "Segoe UI"
+FONT_CODE      = "Cascadia Code"
 
-# Grid row constants — each section gets its own row, NO overlapping
+# Grid Rows
 ROW_HEADER   = 0
 ROW_INPUT    = 1
 ROW_OPTIONS  = 2
-ROW_ACTIONS  = 3   # buttons: Start / Stop / Open Folder
-ROW_PROGRESS = 4   # thin progress bar + status text
-ROW_TERMINAL = 5   # expandable log panel
+ROW_ACTIONS  = 3
+ROW_PROGRESS = 4
+ROW_TERMINAL = 5
 ROW_FOOTER   = 6
 
 
-class NetMiApp(ctk.CTk):
+class OmniStreamApp(ctk.CTk):
+    """OmniStream Pro Application Window."""
 
     def __init__(self):
         super().__init__()
-        self.title("NetMi.Video Downloader")
-        self.geometry("980x820")
-        self.minsize(880, 720)
+        self.title("OmniStream Pro — Universal Multi-Audio Stream Downloader")
+        self.geometry("1000x860")
+        self.minsize(920, 760)
         self.configure(fg_color=BG_ROOT)
 
         icon_path = os.path.join(BASE_DIR, "app_icon.ico")
@@ -68,77 +76,94 @@ class NetMiApp(ctk.CTk):
             except Exception:
                 pass
 
-        self.engine         = DownloadEngine()
-        self.log_queue      = queue.Queue()
-        self.is_downloading = False
+        self.engine           = OmniStreamEngine()
+        self.log_queue        = queue.Queue()
+        self.is_downloading   = False
+        self.queue_items      = []  # list of dicts: {id, title, input, save_dir, resolution, audio, status}
+        self.is_queue_running = False
+        self.current_item_id  = None
 
         self._build_ui()
         self._poll_log_queue()
         self._start_dependency_check()
+        self._start_bridge_server()
 
-    # ── Layout grid ──────────────────────────────────────────────────────────
+    # ── UI Construction ───────────────────────────────────────────────────────
     def _build_ui(self):
         self.grid_columnconfigure(0, weight=1)
-        # Only the terminal row expands to fill remaining vertical space
         self.grid_rowconfigure(ROW_TERMINAL, weight=1)
 
         self._build_header()
         self._build_input_card()
         self._build_options_card()
-        self._build_action_buttons()   # row 3
-        self._build_progress_row()     # row 4
-        self._build_terminal()         # row 5
-        self._build_footer()           # row 6
+        self._build_action_buttons()
+        self._build_progress_row()
+        self._build_terminal_and_queue()
+        self._build_footer()
 
-    # ── Header (row 0) ───────────────────────────────────────────────────────
+    # ── Header ────────────────────────────────────────────────────────────────
     def _build_header(self):
-        hdr = ctk.CTkFrame(self, fg_color=BG_HEADER, corner_radius=0, height=72)
+        hdr = ctk.CTkFrame(self, fg_color=BG_HEADER, corner_radius=0, height=76)
         hdr.grid(row=ROW_HEADER, column=0, sticky="ew")
         hdr.grid_propagate(False)
         hdr.grid_columnconfigure(1, weight=1)
 
         # Icon box
-        icon_box = ctk.CTkFrame(hdr, fg_color=ACCENT_BLUE, width=40, height=40,
-                                corner_radius=10)
-        icon_box.grid(row=0, column=0, rowspan=2, padx=(18, 12), pady=16)
+        icon_box = ctk.CTkFrame(hdr, fg_color=ACCENT_PRIMARY, width=44, height=44, corner_radius=12)
+        icon_box.grid(row=0, column=0, rowspan=2, padx=(20, 14), pady=16)
         icon_box.grid_propagate(False)
-        ctk.CTkLabel(icon_box, text="N",
-                     font=ctk.CTkFont(size=18, weight="bold"),
-                     text_color="white").place(relx=0.5, rely=0.5, anchor="center")
+        ctk.CTkLabel(icon_box, text="⚡", font=ctk.CTkFont(size=20), text_color="white").place(relx=0.5, rely=0.5, anchor="center")
 
-        # Title
+        # Title & Extension Bridge status
+        title_box = ctk.CTkFrame(hdr, fg_color="transparent")
+        title_box.grid(row=0, column=1, sticky="sw", pady=(14, 0))
+
         ctk.CTkLabel(
-            hdr, text="NetMi.Video Downloader",
-            font=ctk.CTkFont(family=FONT_MAIN, size=18, weight="bold"),
-            text_color=TEXT_PRIMARY, anchor="w"
-        ).grid(row=0, column=1, sticky="sw", pady=(16, 0))
+            title_box, text="OmniStream Pro",
+            font=ctk.CTkFont(family=FONT_MAIN, size=19, weight="bold"),
+            text_color=TEXT_TITLE
+        ).pack(side="left")
+
+        ctk.CTkLabel(
+            title_box, text=" v1.0.0 ",
+            font=ctk.CTkFont(family=FONT_MAIN, size=10, weight="bold"),
+            fg_color="#1e1b4b", text_color="#a5b4fc", corner_radius=6
+        ).pack(side="left", padx=(8, 10))
+
+        self.bridge_badge = ctk.CTkLabel(
+            title_box, text="🌐 Extension Bridge: Active",
+            font=ctk.CTkFont(family=FONT_MAIN, size=10, weight="bold"),
+            text_color=ACCENT_EMERALD, fg_color=BG_CARD,
+            corner_radius=12, padx=10, pady=2
+        )
+        self.bridge_badge.pack(side="left")
 
         # Subtitle
         ctk.CTkLabel(
             hdr,
-            text="1080p  ·  All Audio Tracks  ·  MKV Output  |  net52.cc  ·  net77.cc  ·  freecdn1.top",
+            text="1080p  ·  Multi-Audio MKV  ·  Batch Queue & Extension Bridge  ·  High-Speed Muxer",
             font=ctk.CTkFont(family=FONT_MAIN, size=10),
-            text_color=TEXT_SECOND, anchor="w"
-        ).grid(row=1, column=1, sticky="nw", pady=(0, 12))
+            text_color=TEXT_BODY, anchor="w"
+        ).grid(row=1, column=1, sticky="nw", pady=(2, 12))
 
         # Status badge
         self.status_badge = ctk.CTkLabel(
-            hdr, text="  ●  Initializing",
+            hdr, text="  ●  Initializing Engine",
             font=ctk.CTkFont(family=FONT_MAIN, size=11, weight="bold"),
-            text_color=TEXT_YELLOW,
-            fg_color=BG_CARD, corner_radius=20, padx=14, pady=6
+            text_color=ACCENT_AMBER,
+            fg_color=BG_CARD, corner_radius=20, padx=16, pady=6
         )
-        self.status_badge.grid(row=0, column=2, rowspan=2, padx=18, pady=16)
+        self.status_badge.grid(row=0, column=2, rowspan=2, padx=20, pady=16)
 
-    # ── Input Card (row 1) ───────────────────────────────────────────────────
+    # ── Card 1: Input Source ──────────────────────────────────────────────────
     def _build_input_card(self):
-        card = ctk.CTkFrame(self, fg_color=BG_CARD, corner_radius=10)
-        card.grid(row=ROW_INPUT, column=0, sticky="ew", padx=16, pady=(10, 5))
+        card = ctk.CTkFrame(self, fg_color=BG_CARD, corner_radius=12, border_width=1, border_color=BORDER_MAIN)
+        card.grid(row=ROW_INPUT, column=0, sticky="ew", padx=18, pady=(10, 5))
         card.grid_columnconfigure(0, weight=1)
 
-        # Top row: label + buttons
+        # Top row
         top = ctk.CTkFrame(card, fg_color="transparent")
-        top.pack(fill="x", padx=14, pady=(10, 5))
+        top.pack(fill="x", padx=16, pady=(10, 5))
 
         ctk.CTkLabel(
             top, text="Stream Source",
@@ -147,45 +172,45 @@ class NetMiApp(ctk.CTk):
         ).pack(side="left")
 
         ctk.CTkLabel(
-            top, text="  Paste a cURL command or direct M3U8 URL",
+            top, text="  Paste cURL command / M3U8 URL or capture via browser extension",
             font=ctk.CTkFont(family=FONT_MAIN, size=10),
             text_color=TEXT_MUTED
         ).pack(side="left")
 
-        # Button group (right-aligned)
+        # Top Buttons
         btn_row = ctk.CTkFrame(top, fg_color="transparent")
         btn_row.pack(side="right")
 
         ctk.CTkButton(
-            btn_row, text="Clear", width=60, height=30,
-            fg_color=BG_CARD2, hover_color=BORDER,
-            border_width=1, border_color=BORDER2,
-            text_color=TEXT_SECOND,
+            btn_row, text="Clear", width=62, height=28,
+            fg_color=BG_CARD2, hover_color=BORDER_MAIN,
+            border_width=1, border_color=BORDER_SUB,
+            text_color=TEXT_BODY,
             font=ctk.CTkFont(family=FONT_MAIN, size=11), corner_radius=6,
             command=self._clear_input
         ).pack(side="right", padx=(6, 0))
 
         ctk.CTkButton(
-            btn_row, text="📋  Paste", width=100, height=30,
-            fg_color=ACCENT_BLUE, hover_color="#1d4ed8",
+            btn_row, text="📋  Paste", width=95, height=28,
+            fg_color=ACCENT_PRIMARY, hover_color=ACCENT_HOVER,
             text_color="white",
             font=ctk.CTkFont(family=FONT_MAIN, size=11, weight="bold"), corner_radius=6,
             command=self._paste_clipboard
         ).pack(side="right")
 
-        # Text input box
+        # Input Box
         self.input_box = ctk.CTkTextbox(
-            card, height=75,
-            font=ctk.CTkFont(family=FONT_MONO, size=10),
+            card, height=72,
+            font=ctk.CTkFont(family=FONT_CODE, size=10),
             fg_color=BG_INPUT, text_color="#c8deff",
-            border_width=1, border_color=BORDER2, corner_radius=8
+            border_width=1, border_color=BORDER_SUB, corner_radius=8
         )
-        self.input_box.pack(fill="x", padx=14, pady=(0, 12))
+        self.input_box.pack(fill="x", padx=16, pady=(0, 12))
 
-    # ── Options Card (row 2) ─────────────────────────────────────────────────
+    # ── Card 2: Configuration ─────────────────────────────────────────────────
     def _build_options_card(self):
-        card = ctk.CTkFrame(self, fg_color=BG_CARD, corner_radius=10)
-        card.grid(row=ROW_OPTIONS, column=0, sticky="ew", padx=16, pady=(0, 5))
+        card = ctk.CTkFrame(self, fg_color=BG_CARD, corner_radius=12, border_width=1, border_color=BORDER_MAIN)
+        card.grid(row=ROW_OPTIONS, column=0, sticky="ew", padx=18, pady=(0, 5))
         card.grid_columnconfigure(1, weight=1)
         card.grid_columnconfigure(3, weight=1)
 
@@ -193,24 +218,24 @@ class NetMiApp(ctk.CTk):
             ctk.CTkLabel(
                 card, text=text,
                 font=ctk.CTkFont(family=FONT_MAIN, size=11, weight="bold"),
-                text_color=TEXT_SECOND
+                text_color=TEXT_BODY
             ).grid(row=row, column=col, sticky="w", padx=(16, 8), pady=8)
 
         entry_kw = dict(
-            fg_color=BG_INPUT, border_color=BORDER2, border_width=1,
-            height=34, text_color=TEXT_PRIMARY,
-            font=ctk.CTkFont(family=FONT_MAIN, size=11)
+            fg_color=BG_INPUT, border_color=BORDER_SUB, border_width=1,
+            height=34, text_color=TEXT_TITLE,
+            font=ctk.CTkFont(family=FONT_MAIN, size=11), corner_radius=8
         )
         menu_kw = dict(
-            fg_color=BG_INPUT, button_color=BORDER,
-            button_hover_color=BORDER2,
-            dropdown_fg_color=BG_CARD, dropdown_hover_color=BORDER,
+            fg_color=BG_INPUT, button_color=BORDER_MAIN,
+            button_hover_color=ACCENT_PRIMARY,
+            dropdown_fg_color=BG_CARD, dropdown_hover_color=BORDER_MAIN,
             height=34,
             font=ctk.CTkFont(family=FONT_MAIN, size=11),
-            text_color=TEXT_PRIMARY
+            text_color=TEXT_TITLE, corner_radius=8
         )
 
-        # Row 0: Title + Resolution
+        # Row 0: Title & Resolution
         lbl(0, 0, "Title (optional)")
         self.filename_entry = ctk.CTkEntry(
             card, placeholder_text="Leave blank to auto-detect", **entry_kw
@@ -220,13 +245,13 @@ class NetMiApp(ctk.CTk):
         lbl(0, 2, "Resolution")
         self.res_menu = ctk.CTkOptionMenu(
             card,
-            values=["1080p (Full HD)", "720p (HD)", "480p (SD)", "Best Available"],
+            values=["1080p (Full HD - Recommended)", "720p (HD Quality)", "480p (SD Quality)", "Best Available", "Audio Only (No Video)"],
             **menu_kw
         )
-        self.res_menu.set("1080p (Full HD)")
+        self.res_menu.set("1080p (Full HD - Recommended)")
         self.res_menu.grid(row=0, column=3, sticky="ew", padx=(0, 16), pady=8)
 
-        # Row 1: Save Folder + Audio Tracks
+        # Row 1: Save Folder & Audio Selection
         lbl(1, 0, "Save Folder")
         fr = ctk.CTkFrame(card, fg_color="transparent")
         fr.grid(row=1, column=1, sticky="ew", padx=(0, 16), pady=8)
@@ -237,11 +262,11 @@ class NetMiApp(ctk.CTk):
         self.folder_entry.insert(0, DEFAULT_SAVE_DIR)
 
         ctk.CTkButton(
-            fr, text="Browse", width=70, height=34,
-            fg_color=BG_CARD2, hover_color=BORDER,
-            border_width=1, border_color=BORDER2,
-            text_color=TEXT_SECOND,
-            font=ctk.CTkFont(family=FONT_MAIN, size=11), corner_radius=6,
+            fr, text="Browse", width=72, height=34,
+            fg_color=BG_CARD2, hover_color=BORDER_MAIN,
+            border_width=1, border_color=BORDER_SUB,
+            text_color=TEXT_BODY,
+            font=ctk.CTkFont(family=FONT_MAIN, size=11), corner_radius=8,
             command=self._browse_folder
         ).grid(row=0, column=1, padx=(6, 0))
 
@@ -249,136 +274,208 @@ class NetMiApp(ctk.CTk):
         self.audio_menu = ctk.CTkOptionMenu(
             card,
             values=[
-                "All Languages (Recommended)",
-                "English + Hindi",
+                "All Available Languages (Lossless)",
+                "English + Hindi (Dual Audio)",
                 "English Only",
                 "Hindi Only",
             ],
             **menu_kw
         )
-        self.audio_menu.set("All Languages (Recommended)")
+        self.audio_menu.set("All Available Languages (Lossless)")
         self.audio_menu.grid(row=1, column=3, sticky="ew", padx=(0, 16), pady=8)
 
-    # ── Action Buttons (row 3) — OWN dedicated row, NO overlap ──────────────
+    # ── Action Buttons ────────────────────────────────────────────────────────
     def _build_action_buttons(self):
         bar = ctk.CTkFrame(self, fg_color="transparent")
-        bar.grid(row=ROW_ACTIONS, column=0, sticky="ew", padx=16, pady=(5, 5))
-        bar.grid_columnconfigure(0, weight=3)   # Start button takes most space
-        bar.grid_columnconfigure(1, weight=1)
+        bar.grid(row=ROW_ACTIONS, column=0, sticky="ew", padx=18, pady=(4, 4))
+        bar.grid_columnconfigure(0, weight=3)
+        bar.grid_columnconfigure(1, weight=2)
         bar.grid_columnconfigure(2, weight=1)
+        bar.grid_columnconfigure(3, weight=1)
 
         # Start Download
         self.start_btn = ctk.CTkButton(
             bar,
-            text="▶   Start Download",
-            font=ctk.CTkFont(family=FONT_MAIN, size=14, weight="bold"),
-            height=46, corner_radius=10,
-            fg_color=ACCENT_BLUE, hover_color="#1d4ed8",
+            text="▶   Start Download & Mux",
+            font=ctk.CTkFont(family=FONT_MAIN, size=13, weight="bold"),
+            height=44, corner_radius=10,
+            fg_color=ACCENT_PRIMARY, hover_color=ACCENT_HOVER,
             text_color="white",
             command=self._start_download
         )
-        self.start_btn.grid(row=0, column=0, sticky="ew", padx=(0, 8))
+        self.start_btn.grid(row=0, column=0, sticky="ew", padx=(0, 6))
 
-        # Stop / Abort
+        # Add to Queue
+        self.add_queue_btn = ctk.CTkButton(
+            bar,
+            text="📥  Add to Queue",
+            font=ctk.CTkFont(family=FONT_MAIN, size=12, weight="bold"),
+            height=44, corner_radius=10,
+            fg_color="#065f46", hover_color="#047857",
+            text_color="#a7f3d0",
+            command=self._add_current_to_queue
+        )
+        self.add_queue_btn.grid(row=0, column=1, sticky="ew", padx=(0, 6))
+
+        # Abort Button
         self.abort_btn = ctk.CTkButton(
             bar,
             text="■  Stop",
-            font=ctk.CTkFont(family=FONT_MAIN, size=13, weight="bold"),
-            height=46, corner_radius=10,
-            fg_color="#7f1d1d", hover_color="#991b1b",
-            text_color="#fca5a5",
+            font=ctk.CTkFont(family=FONT_MAIN, size=12, weight="bold"),
+            height=44, corner_radius=10,
+            fg_color="#881337", hover_color="#9f1239",
+            text_color="#fecdd3",
             state="disabled",
             command=self._abort_download
         )
-        self.abort_btn.grid(row=0, column=1, sticky="ew", padx=(0, 8))
+        self.abort_btn.grid(row=0, column=2, sticky="ew", padx=(0, 6))
 
-        # Open Folder
+        # Open Output Folder
         ctk.CTkButton(
             bar,
-            text="📁  Open Folder",
-            font=ctk.CTkFont(family=FONT_MAIN, size=13),
-            height=46, corner_radius=10,
-            fg_color=BG_CARD, hover_color=BORDER,
-            border_width=1, border_color=BORDER2,
-            text_color=TEXT_SECOND,
+            text="📁  Folder",
+            font=ctk.CTkFont(family=FONT_MAIN, size=12),
+            height=44, corner_radius=10,
+            fg_color=BG_CARD, hover_color=BORDER_MAIN,
+            border_width=1, border_color=BORDER_SUB,
+            text_color=TEXT_BODY,
             command=self._open_output_folder
-        ).grid(row=0, column=2, sticky="ew")
+        ).grid(row=0, column=3, sticky="ew")
 
-    # ── Progress Row (row 4) — thin bar below buttons ────────────────────────
+    # ── Progress Row ──────────────────────────────────────────────────────────
     def _build_progress_row(self):
-        prog = ctk.CTkFrame(self, fg_color=BG_CARD, corner_radius=8)
-        prog.grid(row=ROW_PROGRESS, column=0, sticky="ew", padx=16, pady=(0, 5))
+        prog = ctk.CTkFrame(self, fg_color=BG_CARD, corner_radius=8, border_width=1, border_color=BORDER_MAIN)
+        prog.grid(row=ROW_PROGRESS, column=0, sticky="ew", padx=18, pady=(0, 5))
         prog.grid_columnconfigure(0, weight=1)
 
         self.progress_bar = ctk.CTkProgressBar(
             prog, height=5, corner_radius=3,
-            progress_color=ACCENT_CYAN, fg_color=BORDER2
+            progress_color=ACCENT_CYAN, fg_color=BG_INPUT
         )
-        self.progress_bar.pack(fill="x", padx=14, pady=(9, 3))
+        self.progress_bar.pack(fill="x", padx=14, pady=(8, 3))
         self.progress_bar.set(0)
 
         self.progress_lbl = ctk.CTkLabel(
             prog,
-            text="Ready — paste a stream source above and click Start Download.",
+            text="Ready — Paste a stream source above or send from browser extension.",
             font=ctk.CTkFont(family=FONT_MAIN, size=10),
             text_color=TEXT_MUTED, anchor="w"
         )
-        self.progress_lbl.pack(anchor="w", padx=14, pady=(0, 7))
+        self.progress_lbl.pack(anchor="w", padx=14, pady=(0, 6))
 
-    # ── Terminal / Output Log (row 5) ────────────────────────────────────────
-    def _build_terminal(self):
-        term = ctk.CTkFrame(self, fg_color=BG_CARD, corner_radius=10)
-        term.grid(row=ROW_TERMINAL, column=0, sticky="nsew", padx=16, pady=(0, 5))
-        term.grid_rowconfigure(1, weight=1)
-        term.grid_columnconfigure(0, weight=1)
+    # ── Terminal & Queue View ─────────────────────────────────────────────────
+    def _build_terminal_and_queue(self):
+        self.main_container = ctk.CTkFrame(self, fg_color=BG_CARD, corner_radius=12, border_width=1, border_color=BORDER_MAIN)
+        self.main_container.grid(row=ROW_TERMINAL, column=0, sticky="nsew", padx=18, pady=(0, 5))
+        self.main_container.grid_rowconfigure(1, weight=1)
+        self.main_container.grid_columnconfigure(0, weight=1)
 
-        # Header bar with traffic-light dots
-        thead = ctk.CTkFrame(term, fg_color="transparent")
-        thead.grid(row=0, column=0, sticky="ew", padx=12, pady=(9, 3))
+        # Tab Selector Bar
+        tab_bar = ctk.CTkFrame(self.main_container, fg_color="transparent")
+        tab_bar.grid(row=0, column=0, sticky="ew", padx=14, pady=(8, 4))
 
-        dots = ctk.CTkFrame(thead, fg_color="transparent")
-        dots.pack(side="left")
-        for dot_color in ("#ef4444", "#f59e0b", "#22c55e"):
-            ctk.CTkFrame(
-                dots, fg_color=dot_color, width=9, height=9, corner_radius=5
-            ).pack(side="left", padx=3)
+        # Switch Buttons
+        btn_box = ctk.CTkFrame(tab_bar, fg_color="transparent")
+        btn_box.pack(side="left")
 
-        ctk.CTkLabel(
-            thead, text="Output Log",
+        self.btn_view_terminal = ctk.CTkButton(
+            btn_box, text="🖥️ Terminal Logs", width=125, height=26,
             font=ctk.CTkFont(family=FONT_MAIN, size=11, weight="bold"),
-            text_color=TEXT_MUTED
-        ).pack(side="left", padx=(10, 0))
+            fg_color=ACCENT_PRIMARY, text_color="white", corner_radius=6,
+            command=self._show_terminal_view
+        )
+        self.btn_view_terminal.pack(side="left", padx=(0, 6))
 
-        btn_r = ctk.CTkFrame(thead, fg_color="transparent")
-        btn_r.pack(side="right")
+        self.btn_view_queue = ctk.CTkButton(
+            btn_box, text="📥 Download Queue (0)", width=155, height=26,
+            font=ctk.CTkFont(family=FONT_MAIN, size=11, weight="bold"),
+            fg_color=BG_CARD2, text_color=TEXT_BODY, corner_radius=6,
+            command=self._show_queue_view
+        )
+        self.btn_view_queue.pack(side="left")
+
+        # Right side actions
+        self.term_actions = ctk.CTkFrame(tab_bar, fg_color="transparent")
+        self.term_actions.pack(side="right")
 
         ctk.CTkButton(
-            btn_r, text="Clear", width=52, height=22,
+            self.term_actions, text="Clear", width=52, height=24,
             font=ctk.CTkFont(size=10), fg_color=BG_CARD2,
-            hover_color=BORDER, border_width=1, border_color=BORDER2,
+            hover_color=BORDER_MAIN, border_width=1, border_color=BORDER_SUB,
             text_color=TEXT_MUTED, corner_radius=5,
             command=lambda: self.log_textbox.delete("1.0", "end")
         ).pack(side="right", padx=(5, 0))
 
         ctk.CTkButton(
-            btn_r, text="Copy", width=52, height=22,
+            self.term_actions, text="Copy", width=52, height=24,
             font=ctk.CTkFont(size=10), fg_color=BG_CARD2,
-            hover_color=BORDER, border_width=1, border_color=BORDER2,
+            hover_color=BORDER_MAIN, border_width=1, border_color=BORDER_SUB,
             text_color=TEXT_MUTED, corner_radius=5,
             command=self._copy_logs
         ).pack(side="right")
 
-        # Log textbox — fills remaining space
+        # ── View 1: Terminal Log Textbox ──
         self.log_textbox = ctk.CTkTextbox(
-            term,
-            font=ctk.CTkFont(family=FONT_MONO, size=10),
+            self.main_container,
+            font=ctk.CTkFont(family=FONT_CODE, size=10),
             fg_color=BG_TERMINAL, text_color=TEXT_LOG,
-            corner_radius=8, border_width=1, border_color=BORDER2,
+            corner_radius=8, border_width=1, border_color=BORDER_SUB,
             wrap="none"
         )
         self.log_textbox.grid(row=1, column=0, sticky="nsew", padx=10, pady=(0, 10))
 
-    # ── Footer (row 6) ───────────────────────────────────────────────────────
+        # ── View 2: Queue Manager Frame ──
+        self.queue_frame = ctk.CTkFrame(self.main_container, fg_color="transparent")
+        self.queue_frame.grid_columnconfigure(0, weight=1)
+        self.queue_frame.grid_rowconfigure(1, weight=1)
+
+        # Queue toolbar
+        q_tool = ctk.CTkFrame(self.queue_frame, fg_color="transparent")
+        q_tool.grid(row=0, column=0, sticky="ew", padx=10, pady=(0, 6))
+
+        self.start_queue_btn = ctk.CTkButton(
+            q_tool, text="▶  Start Queue (Download All)",
+            font=ctk.CTkFont(family=FONT_MAIN, size=11, weight="bold"),
+            fg_color="#047857", hover_color="#065f46", text_color="white",
+            height=28, corner_radius=6, command=self._start_queue_processing
+        )
+        self.start_queue_btn.pack(side="left", padx=(0, 8))
+
+        ctk.CTkButton(
+            q_tool, text="Clear Finished",
+            font=ctk.CTkFont(family=FONT_MAIN, size=11),
+            fg_color=BG_CARD2, hover_color=BORDER_MAIN, text_color=TEXT_BODY,
+            height=28, corner_radius=6, command=self._clear_finished_queue
+        ).pack(side="left", padx=(0, 6))
+
+        ctk.CTkButton(
+            q_tool, text="Clear All",
+            font=ctk.CTkFont(family=FONT_MAIN, size=11),
+            fg_color=BG_CARD2, hover_color="#7f1d1d", text_color="#fca5a5",
+            height=28, corner_radius=6, command=self._clear_all_queue
+        ).pack(side="left")
+
+        # Scrollable items
+        self.queue_scroll = ctk.CTkScrollableFrame(
+            self.queue_frame, fg_color=BG_INPUT,
+            border_width=1, border_color=BORDER_SUB, corner_radius=8
+        )
+        self.queue_scroll.grid(row=1, column=0, sticky="nsew", padx=10, pady=(0, 10))
+
+    def _show_terminal_view(self):
+        self.queue_frame.grid_forget()
+        self.log_textbox.grid(row=1, column=0, sticky="nsew", padx=10, pady=(0, 10))
+        self.btn_view_terminal.configure(fg_color=ACCENT_PRIMARY, text_color="white")
+        self.btn_view_queue.configure(fg_color=BG_CARD2, text_color=TEXT_BODY)
+
+    def _show_queue_view(self):
+        self.log_textbox.grid_forget()
+        self.queue_frame.grid(row=1, column=0, sticky="nsew", padx=10, pady=(0, 10))
+        self.btn_view_queue.configure(fg_color=ACCENT_PRIMARY, text_color="white")
+        self.btn_view_terminal.configure(fg_color=BG_CARD2, text_color=TEXT_BODY)
+        self._refresh_queue_ui()
+
+    # ── Footer ────────────────────────────────────────────────────────────────
     def _build_footer(self):
         footer = ctk.CTkFrame(self, fg_color=BG_HEADER, corner_radius=0, height=28)
         footer.grid(row=ROW_FOOTER, column=0, sticky="ew")
@@ -386,14 +483,25 @@ class NetMiApp(ctk.CTk):
 
         ctk.CTkButton(
             footer,
-            text="XMON4U  •  github.com/Xmon4u  •  v2.1.0",
+            text="OmniStream Pro  •  Developed by XMON4U  •  v1.0.0",
             font=ctk.CTkFont(family=FONT_MAIN, size=10),
             text_color=TEXT_MUTED, fg_color="transparent",
             hover_color=BG_CARD, cursor="hand2",
             command=lambda: webbrowser.open_new_tab("https://github.com/Xmon4u")
         ).pack(side="right", padx=14)
 
-    # ── Queue polling ─────────────────────────────────────────────────────────
+    # ── Bridge Server ─────────────────────────────────────────────────────────
+    def _start_bridge_server(self):
+        self.bridge = BridgeServer(self)
+        success = self.bridge.start()
+        if success:
+            self._log("[Bridge] Localhost extension bridge active on 127.0.0.1:28795")
+            self.bridge_badge.configure(text="🌐 Extension Bridge: Active", text_color=ACCENT_EMERALD)
+        else:
+            self._log("[Bridge] Port 28795 in use by existing instance.")
+            self.bridge_badge.configure(text="🌐 Bridge: Secondary", text_color=ACCENT_AMBER)
+
+    # ── Log & Event Dispatcher ────────────────────────────────────────────────
     def _log(self, text: str):
         self.log_queue.put(("log", text))
 
@@ -402,7 +510,7 @@ class NetMiApp(ctk.CTk):
 
     def _poll_log_queue(self):
         processed = 0
-        while not self.log_queue.empty() and processed < 30:
+        while not self.log_queue.empty() and processed < 40:
             msg_type, data = self.log_queue.get_nowait()
             processed += 1
             if msg_type == "log":
@@ -412,30 +520,35 @@ class NetMiApp(ctk.CTk):
                 pct, status_text = data
                 self.progress_bar.set(max(0.0, min(1.0, pct / 100.0)))
                 self.progress_lbl.configure(text=status_text)
+            elif msg_type == "bridge_job":
+                self._handle_bridge_job(data)
+            elif msg_type == "queue_item_finished":
+                self._handle_queue_item_finished(data)
+
         self.after(80, self._poll_log_queue)
 
     def _set_status(self, state: str):
         states = {
-            "ready":       ("  ●  Ready",        TEXT_GREEN),
-            "downloading": ("  ●  Downloading",  ACCENT_GLOW),
-            "done":        ("  ●  Complete",     TEXT_GREEN),
-            "error":       ("  ●  Error",        TEXT_RED),
-            "aborted":     ("  ●  Stopped",      TEXT_YELLOW),
+            "ready":       ("  ●  Engine Ready",     ACCENT_EMERALD),
+            "downloading": ("  ●  Downloading...",   ACCENT_CYAN),
+            "done":        ("  ●  Task Complete",    ACCENT_EMERALD),
+            "error":       ("  ●  Task Error",       ACCENT_ROSE),
+            "aborted":     ("  ●  Stopped",          ACCENT_AMBER),
         }
-        text, color = states.get(state, ("  ●  Ready", TEXT_GREEN))
+        text, color = states.get(state, ("  ●  Ready", ACCENT_EMERALD))
         self.status_badge.configure(text=text, text_color=color)
 
-    # ── Dependency check ──────────────────────────────────────────────────────
+    # ── Dependency Check ──────────────────────────────────────────────────────
     def _start_dependency_check(self):
         def _check():
-            self._log("[System] Checking dependencies (N_m3u8DL-RE + FFmpeg)...")
+            self._log("[System] Initializing OmniStream Pro engine dependencies...")
             try:
                 n, f = ensure_dependencies(
                     status_callback=lambda s: self._log(f"  {s}"),
                     progress_callback=lambda pct, txt: self._set_progress(pct, txt),
                 )
-                self._log(f"[Ready] Downloader : {n}")
-                self._log(f"[Ready] Multiplexer: {f}\n")
+                self._log(f"[Ready] Stream Engine : {n}")
+                self._log(f"[Ready] Media Muxer   : {f}\n")
                 self._set_status("ready")
                 self._set_progress(0, "Ready — all dependencies configured.")
             except Exception as exc:
@@ -444,7 +557,215 @@ class NetMiApp(ctk.CTk):
 
         threading.Thread(target=_check, daemon=True).start()
 
-    # ── User actions ──────────────────────────────────────────────────────────
+    # ── Extension Bridge Event Handler ────────────────────────────────────────
+    def _handle_bridge_job(self, data: dict):
+        try:
+            self.deiconify()
+            self.lift()
+            self.attributes('-topmost', True)
+            self.after_idle(self.attributes, '-topmost', False)
+            self.focus_force()
+        except Exception:
+            pass
+
+        title = data.get("title", "").strip()
+        curl_or_url = data.get("curl") or data.get("url", "")
+
+        self.input_box.delete("1.0", "end")
+        self.input_box.insert("end", curl_or_url)
+        if title:
+            self.filename_entry.delete(0, "end")
+            self.filename_entry.insert(0, title)
+
+        self._add_to_queue(raw_input=curl_or_url, custom_title=title, auto_show_tab=True)
+        self._log(f"\n[Extension Bridge] Captured stream: {title or 'Video Stream'}")
+        self._log(f"  Source queued automatically for batch download.")
+
+    # ── Queue Operations ──────────────────────────────────────────────────────
+    def _add_current_to_queue(self):
+        raw_input = self.input_box.get("1.0", "end").strip()
+        if not raw_input:
+            messagebox.showwarning("Missing Input", "Please paste a cURL command or M3U8 link first.")
+            return
+
+        filename = self.filename_entry.get().strip()
+        self._add_to_queue(raw_input=raw_input, custom_title=filename, auto_show_tab=True)
+        messagebox.showinfo("Queue", f"Added to Download Queue:\n{filename or 'Video'}")
+
+    def _add_to_queue(self, raw_input: str, custom_title: str = "", auto_show_tab: bool = False):
+        res_raw = self.res_menu.get().lower()
+        if "1080p" in res_raw:
+            resolution = "1080p"
+        elif "720p" in res_raw:
+            resolution = "720p"
+        elif "480p" in res_raw:
+            resolution = "480p"
+        elif "audio only" in res_raw:
+            resolution = "audio_only"
+        else:
+            resolution = "best"
+
+        aud_raw = self.audio_menu.get().lower()
+        if "english + hindi" in aud_raw:
+            audio_choice = "en_hi"
+        elif "english only" in aud_raw:
+            audio_choice = "eng"
+        elif "hindi only" in aud_raw:
+            audio_choice = "hin"
+        else:
+            audio_choice = "all"
+
+        save_dir = self.folder_entry.get().strip()
+        display_title = custom_title or f"Video_{len(self.queue_items) + 1}"
+
+        item = {
+            "id": f"q_{int(time.time()*1000)}_{len(self.queue_items)}",
+            "title": display_title,
+            "input": raw_input,
+            "save_dir": save_dir,
+            "resolution": resolution,
+            "audio": audio_choice,
+            "status": "Waiting"
+        }
+        self.queue_items.append(item)
+        self.btn_view_queue.configure(text=f"📥 Download Queue ({len(self.queue_items)})")
+
+        if auto_show_tab:
+            self._show_queue_view()
+        else:
+            self._refresh_queue_ui()
+
+    def _refresh_queue_ui(self):
+        for widget in self.queue_scroll.winfo_children():
+            widget.destroy()
+
+        if not self.queue_items:
+            empty = ctk.CTkLabel(
+                self.queue_scroll,
+                text="The Download Queue is empty.\nPaste a stream source or capture streams via browser extension.",
+                font=ctk.CTkFont(family=FONT_MAIN, size=11),
+                text_color=TEXT_MUTED, pady=40
+            )
+            empty.pack(expand=True)
+            self.btn_view_queue.configure(text="📥 Download Queue (0)")
+            return
+
+        self.btn_view_queue.configure(text=f"📥 Download Queue ({len(self.queue_items)})")
+
+        status_colors = {
+            "Waiting":     (ACCENT_AMBER, "#78350f"),
+            "Downloading": (ACCENT_GLOW, "#1e3a8a"),
+            "Completed":   (ACCENT_EMERALD, "#064e3b"),
+            "Failed":      (ACCENT_ROSE, "#7f1d1d")
+        }
+
+        for item in self.queue_items:
+            card = ctk.CTkFrame(self.queue_scroll, fg_color=BG_CARD2, corner_radius=8)
+            card.pack(fill="x", padx=4, pady=4)
+            card.grid_columnconfigure(1, weight=1)
+
+            s_color, s_bg = status_colors.get(item["status"], (TEXT_BODY, BG_CARD))
+            pill = ctk.CTkLabel(
+                card, text=f" {item['status']} ",
+                font=ctk.CTkFont(family=FONT_MAIN, size=10, weight="bold"),
+                text_color=s_color, fg_color=s_bg, corner_radius=6, padx=6, pady=2
+            )
+            pill.grid(row=0, column=0, padx=8, pady=8, sticky="w")
+
+            detail_frame = ctk.CTkFrame(card, fg_color="transparent")
+            detail_frame.grid(row=0, column=1, sticky="w", padx=4, pady=6)
+
+            ctk.CTkLabel(
+                detail_frame, text=item["title"],
+                font=ctk.CTkFont(family=FONT_MAIN, size=12, weight="bold"),
+                text_color=TEXT_TITLE, anchor="w"
+            ).pack(anchor="w")
+
+            info_str = f"Quality: {item['resolution']} | Audio: {item['audio']} | Dest: {os.path.basename(item['save_dir'])}"
+            ctk.CTkLabel(
+                detail_frame, text=info_str,
+                font=ctk.CTkFont(family=FONT_MAIN, size=10),
+                text_color=TEXT_BODY, anchor="w"
+            ).pack(anchor="w")
+
+            btn_box = ctk.CTkFrame(card, fg_color="transparent")
+            btn_box.grid(row=0, column=2, padx=8, pady=6, sticky="e")
+
+            if item["status"] in ("Waiting", "Failed"):
+                ctk.CTkButton(
+                    btn_box, text="▶ Download", width=80, height=26,
+                    font=ctk.CTkFont(family=FONT_MAIN, size=10, weight="bold"),
+                    fg_color=ACCENT_PRIMARY, hover_color=ACCENT_HOVER,
+                    command=lambda it=item: self._download_single_queue_item(it)
+                ).pack(side="left", padx=3)
+
+            ctk.CTkButton(
+                btn_box, text="✕", width=28, height=26,
+                font=ctk.CTkFont(family=FONT_MAIN, size=11, weight="bold"),
+                fg_color=BG_CARD, hover_color="#7f1d1d", text_color="#fca5a5",
+                command=lambda it=item: self._remove_queue_item(it)
+            ).pack(side="left", padx=2)
+
+    def _remove_queue_item(self, item):
+        if item in self.queue_items:
+            self.queue_items.remove(item)
+            self._refresh_queue_ui()
+
+    def _clear_finished_queue(self):
+        self.queue_items = [it for it in self.queue_items if it["status"] != "Completed"]
+        self._refresh_queue_ui()
+
+    def _clear_all_queue(self):
+        if self.is_queue_running:
+            messagebox.showwarning("Queue", "Queue is currently running. Stop it first.")
+            return
+        self.queue_items = []
+        self._refresh_queue_ui()
+
+    def _download_single_queue_item(self, item):
+        if self.is_downloading:
+            messagebox.showwarning("Busy", "A download is already in progress.")
+            return
+        self._start_download_item(item, is_queue_batch=False)
+
+    def _start_queue_processing(self):
+        if self.is_downloading:
+            messagebox.showwarning("Busy", "A download is already running.")
+            return
+
+        waiting_items = [it for it in self.queue_items if it["status"] == "Waiting"]
+        if not waiting_items:
+            messagebox.showinfo("Queue", "No waiting items in the queue.")
+            return
+
+        self.is_queue_running = True
+        self.start_queue_btn.configure(text="⏳ Running Queue...", state="disabled")
+        first_item = waiting_items[0]
+        self._start_download_item(first_item, is_queue_batch=True)
+
+    def _handle_queue_item_finished(self, data: dict):
+        item_id = data.get("id")
+        status = data.get("status")
+        is_queue_batch = data.get("is_queue_batch", False)
+
+        for it in self.queue_items:
+            if it["id"] == item_id:
+                it["status"] = status
+                break
+
+        self._refresh_queue_ui()
+
+        if is_queue_batch and self.is_queue_running:
+            waiting = [it for it in self.queue_items if it["status"] == "Waiting"]
+            if waiting:
+                next_item = waiting[0]
+                self._start_download_item(next_item, is_queue_batch=True)
+            else:
+                self.is_queue_running = False
+                self.start_queue_btn.configure(text="▶  Start Queue (Download All)", state="normal")
+                messagebox.showinfo("Queue Complete", "All items in the download queue have finished!")
+
+    # ── User Actions ──────────────────────────────────────────────────────────
     def _paste_clipboard(self):
         try:
             content = self.clipboard_get().strip()
@@ -467,8 +788,7 @@ class NetMiApp(ctk.CTk):
         if os.path.isdir(path):
             os.startfile(path)
         else:
-            messagebox.showerror("Folder Not Found",
-                                 f"The folder does not exist:\n{path}")
+            messagebox.showerror("Folder Not Found", f"The folder does not exist:\n{path}")
 
     def _copy_logs(self):
         logs = self.log_textbox.get("1.0", "end")
@@ -479,6 +799,8 @@ class NetMiApp(ctk.CTk):
         if self.is_downloading:
             self._log("\n[Action] Sending stop signal to download engine...")
             self.engine.abort()
+            self.is_queue_running = False
+            self.start_queue_btn.configure(text="▶  Start Queue (Download All)", state="normal")
 
     def _start_download(self):
         if self.is_downloading:
@@ -486,84 +808,101 @@ class NetMiApp(ctk.CTk):
 
         raw_input = self.input_box.get("1.0", "end").strip()
         if not raw_input:
-            messagebox.showwarning(
-                "Missing Input",
-                "Please paste a cURL command or direct M3U8 link first."
-            )
+            messagebox.showwarning("Missing Input", "Please paste a cURL command or direct M3U8 link first.")
             return
 
         filename = self.filename_entry.get().strip()
         save_dir = self.folder_entry.get().strip()
 
-        res_text   = self.res_menu.get()
-        resolution = (
-            "1080p" if "1080p" in res_text else
-            "720p"  if "720p"  in res_text else
-            "480p"  if "480p"  in res_text else
-            "best"
-        )
+        res_raw = self.res_menu.get().lower()
+        if "1080p" in res_raw:
+            resolution = "1080p"
+        elif "720p" in res_raw:
+            resolution = "720p"
+        elif "480p" in res_raw:
+            resolution = "480p"
+        elif "audio only" in res_raw:
+            resolution = "audio_only"
+        else:
+            resolution = "best"
 
-        aud_text     = self.audio_menu.get()
-        audio_choice = (
-            "en_hi" if "English + Hindi" in aud_text else
-            "eng"   if "English Only"    in aud_text else
-            "hin"   if "Hindi Only"      in aud_text else
-            "all"
-        )
+        aud_raw = self.audio_menu.get().lower()
+        if "english + hindi" in aud_raw:
+            audio_choice = "en_hi"
+        elif "english only" in aud_raw:
+            audio_choice = "eng"
+        elif "hindi only" in aud_raw:
+            audio_choice = "hin"
+        else:
+            audio_choice = "all"
 
-        # Switch UI to downloading state
+        item = {
+            "id": "direct_input",
+            "title": filename or "Video",
+            "input": raw_input,
+            "save_dir": save_dir,
+            "resolution": resolution,
+            "audio": audio_choice,
+            "status": "Downloading"
+        }
+        self._start_download_item(item, is_queue_batch=False)
+
+    def _start_download_item(self, item: dict, is_queue_batch: bool = False):
         self.is_downloading = True
-        self.start_btn.configure(
-            state="disabled",
-            fg_color="#1e3a5f",
-            text="⏳  Downloading..."
-        )
+        item["status"] = "Downloading"
+        self._refresh_queue_ui()
+
+        self.start_btn.configure(state="disabled", fg_color="#312e81", text="⏳  Downloading...")
         self.abort_btn.configure(state="normal")
         self._set_status("downloading")
         self.progress_bar.set(0)
         self.log_textbox.delete("1.0", "end")
 
         def _worker():
+            status = "Completed"
             try:
+                self._log(f"\n[Task] Starting download: {item['title']}")
                 out = self.engine.run_download(
-                    input_text=raw_input,
-                    save_name=filename,
-                    save_dir=save_dir,
-                    resolution=resolution,
-                    audio_choice=audio_choice,
+                    input_text=item["input"],
+                    save_name=item["title"] if item["title"] != "Video" else "",
+                    save_dir=item["save_dir"],
+                    resolution=item["resolution"],
+                    audio_choice=item["audio"],
                     log_callback=self._log,
                     progress_callback=self._set_progress,
                 )
                 self._set_status("done")
                 self._set_progress(100.0, f"Saved: {os.path.basename(out)}")
-                messagebox.showinfo(
-                    "Download Complete",
-                    f"File saved successfully.\n\n{out}"
-                )
+                if not is_queue_batch:
+                    messagebox.showinfo("Download Complete", f"File saved successfully.\n\n{out}")
             except RuntimeError as exc:
                 err = str(exc)
+                status = "Failed"
                 self._set_status("aborted" if "aborted" in err.lower() else "error")
                 self._log(f"\n[Error] {err}")
                 self._set_progress(0, f"Failed: {err[:100]}")
-                if "aborted" not in err.lower():
+                if not is_queue_batch and "aborted" not in err.lower():
                     messagebox.showerror("Download Failed", err)
             except Exception as exc:
+                status = "Failed"
                 self._set_status("error")
                 self._log(f"\n[Unexpected Error] {exc}")
                 self._set_progress(0, "An unexpected error occurred.")
-                messagebox.showerror("Unexpected Error", str(exc))
+                if not is_queue_batch:
+                    messagebox.showerror("Unexpected Error", str(exc))
             finally:
                 self.is_downloading = False
-                self.start_btn.configure(
-                    state="normal",
-                    fg_color=ACCENT_BLUE,
-                    text="▶   Start Download"
-                )
+                self.start_btn.configure(state="normal", fg_color=ACCENT_PRIMARY, text="▶   Start Download & Mux")
                 self.abort_btn.configure(state="disabled")
+                self.log_queue.put(("queue_item_finished", {
+                    "id": item["id"],
+                    "status": status,
+                    "is_queue_batch": is_queue_batch
+                }))
 
         threading.Thread(target=_worker, daemon=True).start()
 
 
 if __name__ == "__main__":
-    app = NetMiApp()
+    app = OmniStreamApp()
     app.mainloop()

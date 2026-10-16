@@ -1,7 +1,7 @@
 """
-NetMirror Downloader - Dependency Manager
-Automatically detects and installs required binaries (N_m3u8DL-RE and FFmpeg).
-All logs and status messages are strictly in English.
+OmniStream Pro - Dependency Manager
+Automatically detects and installs required streaming and multiplexing binaries
+(N_m3u8DL-RE and FFmpeg) for high-speed multi-audio stream capture.
 """
 
 import os
@@ -21,11 +21,14 @@ def get_base_dir() -> str:
     return os.path.dirname(os.path.abspath(__file__))
 
 def get_bin_dir() -> str:
-    """Return the dedicated local bin directory for portable binaries."""
+    """Return the dedicated local or AppData bin directory for portable binaries."""
     local_bin = os.path.join(get_base_dir(), "bin")
     if not os.path.exists(local_bin):
-        # Also check %LOCALAPPDATA%\NetMirrorDownloader\bin
-        appdata_bin = os.path.join(os.environ.get("LOCALAPPDATA", os.path.expanduser("~")), "NetMirrorDownloader", "bin")
+        appdata_bin = os.path.join(
+            os.environ.get("LOCALAPPDATA", os.path.expanduser("~")),
+            "OmniStreamPro",
+            "bin"
+        )
         try:
             os.makedirs(local_bin, exist_ok=True)
             return local_bin
@@ -36,20 +39,20 @@ def get_bin_dir() -> str:
 
 def find_binary(binary_name: str) -> Optional[str]:
     """Search for a binary across bundled, local, standard, and PATH locations."""
-    # 1. Check PyInstaller _MEIPASS
+    # 1. PyInstaller _MEIPASS bundle check
     if hasattr(sys, '_MEIPASS'):
         p = os.path.join(sys._MEIPASS, binary_name)
         if os.path.exists(p):
             return p
-            
-    # 2. Check local application directory and bin subfolder
+
+    # 2. Local application bin directory and user AppData
     base_dir = get_base_dir()
     candidates = [
         os.path.join(base_dir, binary_name),
         os.path.join(base_dir, "bin", binary_name),
-        os.path.join(os.environ.get("LOCALAPPDATA", ""), "NetMirrorDownloader", "bin", binary_name)
+        os.path.join(os.environ.get("LOCALAPPDATA", ""), "OmniStreamPro", "bin", binary_name)
     ]
-    
+
     # 3. Known standard system locations
     if binary_name.lower().startswith("n_m3u8"):
         candidates.append(r"C:\tools\N_m3u8DL-RE.exe")
@@ -58,16 +61,16 @@ def find_binary(binary_name: str) -> Optional[str]:
             r"C:\ffmpeg\bin\ffmpeg.exe",
             r"C:\tools\ffmpeg.exe"
         ])
-        
+
     for c in candidates:
         if c and os.path.exists(c) and os.path.isfile(c):
             return os.path.abspath(c)
-            
+
     # 4. Check system PATH
     which_p = shutil.which(binary_name)
     if which_p:
         return os.path.abspath(which_p)
-        
+
     return None
 
 def download_file_with_progress(
@@ -75,18 +78,18 @@ def download_file_with_progress(
     dest_path: str,
     progress_callback: Optional[Callable[[float, str], None]] = None
 ):
-    """Download a remote file with real-time percentage progress callback."""
+    """Download a remote binary archive with percentage tracking."""
     req = urllib.request.Request(
         url,
         headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
     )
-    
+
     with urllib.request.urlopen(req, timeout=60) as resp:
         total_size = resp.getheader("Content-Length")
         total_size = int(total_size) if total_size else 0
         downloaded = 0
         chunk_size = 64 * 1024
-        
+
         with open(dest_path, "wb") as f:
             while True:
                 chunk = resp.read(chunk_size)
@@ -106,7 +109,7 @@ def ensure_dependencies(
 ) -> Tuple[str, str]:
     """
     Ensure N_m3u8DL-RE and FFmpeg exist.
-    If missing, automatically downloads and extracts them.
+    If missing, automatically downloads and extracts them into local bin.
     Returns: (n_m3u8_path, ffmpeg_path)
     """
     def log(msg: str):
@@ -117,11 +120,10 @@ def ensure_dependencies(
 
     bin_dir = get_bin_dir()
     os.makedirs(bin_dir, exist_ok=True)
-    
+
     n_m3u8_path = find_binary("N_m3u8DL-RE.exe")
     ffmpeg_path = find_binary("ffmpeg.exe")
 
-    # If already found on system (e.g. C:\tools\), copy locally for true portability if needed
     if not n_m3u8_path:
         log("[Setup] N_m3u8DL-RE not found. Initiating automatic download...")
         zip_path = os.path.join(bin_dir, "nm3u8_dl.zip")
@@ -168,8 +170,8 @@ def ensure_dependencies(
             log(f"[Setup Error] Failed to download FFmpeg: {e}")
             raise RuntimeError(f"Could not auto-download FFmpeg: {e}")
 
-    log(f"[Ready] N_m3u8DL-RE: {n_m3u8_path}")
-    log(f"[Ready] FFmpeg: {ffmpeg_path}")
+    log(f"[Engine Ready] N_m3u8DL-RE: {n_m3u8_path}")
+    log(f"[Engine Ready] FFmpeg: {ffmpeg_path}")
     return n_m3u8_path, ffmpeg_path
 
 if __name__ == "__main__":
