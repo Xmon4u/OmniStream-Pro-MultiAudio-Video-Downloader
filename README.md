@@ -1,81 +1,109 @@
-# Ultra Downloader - Multi-Audio Edition
+# NetMi.Video Downloader
 
-[![Release](https://img.shields.io/github/v/release/Xmon4u/NetMirror-MultiAudio-Downloader?color=38bdf8&style=flat-square)](https://github.com/Xmon4u/NetMirror-MultiAudio-Downloader/releases)
-[![Platform](https://img.shields.io/badge/Platform-Windows-0284c7?style=flat-square&logo=windows)](https://github.com/Xmon4u/NetMirror-MultiAudio-Downloader)
-[![Python](https://img.shields.io/badge/Python-3.10%2B-blue?style=flat-square&logo=python)](https://python.org)
-[![Developer](https://img.shields.io/badge/Developer-XMON4U-f43f5e?style=flat-square)](https://github.com/Xmon4u)
-[![License](https://img.shields.io/badge/License-MIT-green?style=flat-square)](LICENSE)
+**Professional multi-audio HLS/M3U8 stream downloader for Windows.**
 
-**Ultra Downloader** is a high-speed, portable Windows utility built to download full **1080p Full HD video** streams along with **all multi-language audio tracks** (English, Hindi, Spanish, German, Japanese, French, Korean, etc.) from modern media streaming servers.
-
-It automatically extracts, downloads, and multiplexes all audio channels into a clean `.mkv` container using FFmpeg, ready for instant playback in VLC or MPC-HC with switchable audio tracks.
+Automatically downloads 1080p video with **all audio language tracks** muxed
+into a single `.mkv` file using [N_m3u8DL-RE](https://github.com/nilaoda/N_m3u8DL-RE)
+and [FFmpeg](https://ffmpeg.org/) — both auto-downloaded on first run.
 
 ---
 
-## ✨ Features
+## Features
 
-- **Multi-Track Audio Multiplexing**: Captures every audio track available in the master stream (up to 30+ language streams) and packages them together.
-- **Zero Configuration / Auto-Bootstrapper**: Automatically checks for `N_m3u8DL-RE` and `FFmpeg`. If missing on any target machine, it automatically fetches and installs them in the background.
-- **Modern Dark UI**: Windows 11 style dark interface powered by CustomTkinter, featuring real-time speed monitoring, progress tracking, and non-blocking terminal logs.
-- **Auto-Conflict & Duplicate Resolution**: Automatically handles file name collisions so subsequent downloads in the same folder never freeze or fail.
-- **cURL Command & M3U8 Auto-Detection**: Paste direct cURL commands copied from browser Developer Tools (F12) to bypass session tokens and referer checks.
-- **16 Multi-Threaded Workers**: Parallel chunk retrieval for maximum download speeds.
-
----
-
-## 📥 Download & Quick Start
-
-1. Go to the [**Releases**](https://github.com/Xmon4u/NetMirror-MultiAudio-Downloader/releases) page.
-2. Download **`Ultra_Downloader_MultiAudio.exe`**.
-3. Double-click to launch (standalone, no installation required).
+- **Multi-audio MKV** — all language tracks downloaded and muxed automatically
+- **1080p by default** — also supports 720p, 480p, or best available
+- **cURL import** — paste any cURL command copied from DevTools
+- **No installation** — single portable `.exe`, no Python required
+- **Auto-dependency setup** — N_m3u8DL-RE and FFmpeg fetched automatically
+- **Real-time log** — live terminal output while downloading
+- **Abort support** — stop the download at any time
 
 ---
 
-## 📖 How to Use
+## Supported Sites
 
-### Step 1: Copy Stream Link from Browser
-1. In your browser (Chrome / Edge / Brave), navigate to your streaming page and hit play.
-2. Press **`F12`** to open **Developer Tools** and switch to the **Network** tab.
-3. In the filter box, type **`m3u8`**.
-4. Right-click the master playlist request (e.g. `*.m3u8` or `1080p.m3u8`):
-   - Select **Copy** ➔ **Copy as cURL (cmd)** *(or "Copy link address")*.
-
-### Step 2: Download
-1. Launch **Ultra Downloader**.
-2. Click **📋 Paste Clipboard**.
-3. (Optional) Provide a custom movie title, target resolution, and audio preference.
-4. Click **🚀 START MULTI-AUDIO DOWNLOAD**.
-
-When completed, click **📁 Open Folder** to play your multi-audio `.mkv` file!
+| Site | Status |
+|------|--------|
+| net52.cc | ✅ Tested |
+| net77.cc | ✅ Tested |
+| freecdn1.top | ✅ Tested |
+| Any HLS/M3U8 stream | ✅ Should work |
 
 ---
 
-## 🛠️ Building from Source
+## How to Use
+
+### Option A — Download the .exe (Recommended)
+
+1. Go to [**Releases**](https://github.com/Xmon4u/NetMirror-MultiAudio-Downloader/releases)
+2. Download `NetMi_Video_Downloader.exe`
+3. Run it — no installation needed
+
+### Option B — Run from source
 
 ```bash
-# Clone the repository
-git clone https://github.com/Xmon4u/NetMirror-MultiAudio-Downloader.git
-cd NetMirror-MultiAudio-Downloader
-
-# Install dependencies
-pip install customtkinter pillow pyinstaller
-
-# Run GUI
+pip install customtkinter pillow
 python main_gui.py
-
-# Build single-file EXE with icon
-python build_exe.py
 ```
 
 ---
 
-## 👨‍💻 Developer & Credits
+## Usage
 
-- **Developer:** [XMON4U](https://github.com/Xmon4u)
-- **GitHub:** [github.com/Xmon4u](https://github.com/Xmon4u)
+1. Open the video in your browser
+2. Press `F12` → **Network** tab → find the `.m3u8` request
+3. Right-click the request → **Copy as cURL**
+4. Paste into NetMi.Video Downloader
+5. Set title and save folder (optional)
+6. Click **▶ Start Download**
+
+Files are saved as `<Title>.mkv` on your Desktop by default.
 
 ---
 
-## ⚖️ License
+## Build from Source
 
-Distributed under the [MIT License](LICENSE).
+```bash
+pip install pyinstaller customtkinter pillow
+python build_exe.py
+```
+
+Output: `dist/NetMi_Video_Downloader.exe`
+
+---
+
+## Project Structure
+
+```
+NetMi.Video Downloader/
+├── main_gui.py           # CustomTkinter UI (NetMiApp)
+├── core_engine.py        # Download engine (N_m3u8DL-RE + FFmpeg)
+├── setup_dependencies.py # Auto-downloads N_m3u8DL-RE and FFmpeg
+├── build_exe.py          # PyInstaller build script
+├── app_icon.ico          # App icon (Windows)
+└── app_icon.png          # App icon (PNG)
+```
+
+---
+
+## Requirements (source)
+
+- Python 3.10+
+- `customtkinter`, `pillow`
+
+## Requirements (exe)
+
+- Windows 10/11 x64
+- Internet connection (for first-run dependency setup)
+
+---
+
+## Author
+
+**XMON4U** — [github.com/Xmon4u](https://github.com/Xmon4u)
+
+---
+
+## License
+
+MIT License — see [LICENSE](LICENSE)

@@ -1,24 +1,25 @@
-# PyInstaller & Virtual Environments
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+
+# PyInstaller build artifacts
 build/
 dist/
 *.spec
+
+# Local tool binaries (auto-downloaded by setup_dependencies.py)
 bin/
-__pycache__/
-*.py[cod]
-*$py.class
-.venv/
-venv/
-env/
 
-# Media & Temporary files
-*.mkv
-*.mp4
-*.ts
-*.m3u8
-.netmirror_*
-.cache/
+# Playlist cache
+master_*/
 
-# OS Specific
+# OS
+.DS_Store
 Thumbs.db
 desktop.ini
-.DS_Store
+
+# IDEs
+.vscode/
+.idea/
+*.swp
